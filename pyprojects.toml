@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "LASER"
+version = "1.0.0"
+dependencies = [
+    "numpy",
+    "pandas",
+    "dipy",
+    "sigpy",
+    "torch",
+    "cupy",
+    
+]

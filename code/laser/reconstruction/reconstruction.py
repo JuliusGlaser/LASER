@@ -1,0 +1,1121 @@
+import argparse
+import h5py
+import os
+
+import numpy as np
+import sigpy as sp
+
+from sigpy.mri import retro, app, sms, muse, mussels
+from os.path import exists
+import shutil
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import scipy.io as sio
+import numpy as np
+import time 
+import matplotlib.pyplot as plt
+import torchvision.transforms as T
+from pytorch_wavelets import DTCWTForward, DTCWTInverse, DWTForward,DWTInverse
+
+from latrec.training.models.nn import autoencoder as ae
+from latrec.training.sim import dwi
+
+import yaml
+from yaml import Loader
+from time import time
+
+def create_directory(path):
+    """
+    Creates a directory at the specified path if it doesn't already exist.
+
+    Parameters:
+    path (str): The directory path to create.
+
+    Returns:
+    bool: True if the directory was created, False if it already exists.
+    """
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Directory created at: {path}")
+        return True
+    else:
+        print(f"Directory already exists at: {path}")
+        return False
+
+def get_sms_phase_shift_torch(ishape, MB, yshift, device):
+
+    """
+    Args:
+        ishape (tuple or list): input shape of [..., Nz, Ny, Nx].
+        MB (int): multi-band factor.
+        yshift (tuple or list): use custom yshift.
+
+    References:
+        * Breuer FA, Blaimer M, Heidemann RM, Mueller MF,
+            Griswold MA, Jakob PM.
+            Controlled aliasing in parallel imagin results in
+            higher acceleration (CAIPIRINHA) for multi-slice imaging.
+            Magn. Reson. Med. 53:684-691 (2005).
+    """
+    Nz, Ny, Nx = ishape[-3:]
+
+    phi = torch.ones(ishape, dtype=torch.complex64).to(device)
+    phi.requires_grad = False
+    bas = 2 * torch.pi / 2
+    bas = torch.tensor(bas).to(device)
+    bas.requires_grad = False
+    if yshift is None:
+        yshift = (torch.arange(Nz)) / MB
+    else:
+        assert (len(yshift) == Nz)
+
+    print(' > sms: yshift ', yshift)
+
+    lx = torch.arange(Nx) - Nx // 2
+    lx.requires_grad = False
+    ly = torch.arange(Ny) - Ny // 2
+    ly.requires_grad = False
+
+    mx, my = torch.meshgrid(lx, ly, indexing='xy')
+    my.requires_grad = False
+    my = my.to(device)
+    for z in range(Nz):
+        slice_yshift = (bas * yshift[z]).to(torch.float64).to(device)
+        slice_yshift.requires_grad = False
+        phi[ z, :, :] = torch.exp(1j * my * slice_yshift)
+
+    return phi
+
+def coil_for(x: torch.Tensor, coils: torch.Tensor) -> torch.Tensor:
+    '''
+    Performs forward coil sensitivity multiplication
+    inputs:
+        x     (Q x S x 1 x Z x X x Y) - shot split diffusion signal
+        coils (1 x 1 x C x Z x X x Y) - coil sensitivity functions
+    output
+        out   (Q x S x C x Z x X x Y) - shot and coil split diffusion signal
+
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of slices
+    C = number of acquisition coils
+    S = number of shots
+    Q = number of diffusion directions
+    '''
+    return  x * coils
+
+def fft2c_torch(x: torch.Tensor, dim) -> torch.Tensor:
+    '''
+    Performs a forward fourier transform
+    inputs:
+          x (Q x S x C x Z x X x Y) - shot and coil split diffusion signal in image space
+    outputs:
+        out (Q x S x C x Z x X x Y) - shot and coil split diffusion signal in k-space
+    
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of slices
+    C = number of acquisition coils
+    S = number of shots
+    Q = number of diffusion directions            
+    '''
+
+
+    return torch.fft.fftshift(torch.fft.fftn(torch.fft.ifftshift(x, dim=dim), dim=dim, norm='ortho'), dim=dim)
+
+def R(data,mask):
+    '''
+    Apply undersampling mask to the diffusion signal input
+    inputs:
+        data  (Q x S x C x 1 x X x Y)   - multiband, coil and shot split diffusion data in k-space
+        mask  (Q x 1 x 1 x 1 x X x Y)   - mask to be applied in frequency and phase encoding direction and for each diffusion direction
+        
+    output:
+        out   (Q x S x C x 1 x X x Y)   - masked, multiband, coil and shot split diffusion data in k-space
+    
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    C = number of acquisition coils
+    S = number of shots
+    Q = number of diffusion directions
+    '''
+    
+    return data * mask
+
+def add_noise(x_clean, scale, noiseType = 'gaussian'):
+
+    if noiseType== 'gaussian':
+        x_noisy = x_clean + np.random.normal(loc = 0,
+                                            scale = scale,
+                                            size=x_clean.shape)
+    elif noiseType== 'rician':
+        noise1 =np.random.normal(0, scale, size=x_clean.shape)
+        noise2 = np.random.normal(0, scale, size=x_clean.shape)
+        x_noisy = np.sqrt((x_clean + noise1) ** 2 + noise2 ** 2)
+
+    x_noisy[x_noisy < 0.] = 0.
+    x_noisy[x_noisy > 1.] = 1.
+
+    return x_noisy
+
+def Decoder_for_with_b0(model, modelName, N_x, N_y, N_z, Q, x_1, b0_real, b0_imag):
+    '''
+    Takes an input data through the decoder trained for compressing signal evolution
+    input
+        model              - neural network model
+        x (X*Y x L)        - input data
+    output
+        out (Q x 1 x 1 x Z x X x Y)
+
+    L = number of latent variables
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of acquired slices
+    Q = number of diffusion directions
+    '''
+    assert len(b0_real.shape) == 2
+    assert len(b0_imag.shape) == 2
+    if modelName == 'VAE':
+        out = model.decode(x_1)
+    elif modelName == 'Dif_Dec_VAE':
+        out,_,_ = model.decode(x_1)
+    out = (out * b0_real + 1j*out*b0_imag).reshape(N_z,N_x, N_y,Q)
+    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
+
+    # out_scaled = torch.view_as_complex(out_scaled)
+    out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_x,N_y))
+
+    return out_scaled
+
+def Decoder_for(model, N_x, N_y, N_z, Q, b0, x_1):
+    '''
+    Takes an input data through the decoder trained for compressing signal evolution
+    input
+        model              - neural network model
+        x (X*Y x L)        - input data
+    output
+        out (Q x 1 x 1 x Z x X x Y)
+
+    L = number of latent variables
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of acquired slices
+    Q = number of diffusion directions
+    '''
+    out = model.decode(x_1)
+    out = (out*torch.real(b0) + 1j*torch.imag(b0)*out).reshape(N_z,N_x, N_y,Q)
+    # out = torch.stack((out * b0_real,out * b0_imag),-1).reshape(N_z,N_x, N_y,Q,2)
+    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
+
+    # out_scaled = torch.view_as_complex(out_scaled)
+
+
+    # out_scaled = torch.reshape(out_scaled, (N_z, N_x, N_y, Q, 2))
+    # out_scaled = out_scaled.permute(-2, 0, 1, 2, -1)    #Q,Z,X,Y,2
+
+    # out_scaled = torch.view_as_complex(out_scaled)
+    out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_x,N_y))
+
+    return out_scaled
+
+def Multi_shot_for(x, phase):
+    '''
+    Splits the acquired data in seperate acquired shots according to the shot phases
+    input
+        x     (Q x 1 x 1 x Z x X x Y)   - diffusion signal
+        phase (1 x S x 1 x Z x X x Y)   - shot phases
+    output
+        out   (Q x S x 1 x Z x X x Y)   - shot split diffusion signal
+
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of slices
+    S = number of shots
+    Q = number of diffusion directions
+    '''
+    return x * phase
+
+def Multiband_for(x, multiband_phase):
+    '''
+    multiplies the k-space diffusion signal with the phase of the multiband acquisition, 
+    s.t. the phase between the two slices varies and the images can be split afterwards
+    References:
+        * Breuer FA, Blaimer M, Heidemann RM, Mueller MF,
+          Griswold MA, Jakob PM.
+          Controlled aliasing in parallel imagin results in
+          higher acceleration (CAIPIRINHA) for multi-slice imaging.
+          Magn. Reson. Med. 53:684-691 (2005).
+
+    input
+        x     (Q x S x C x Z x X x Y)   - coil and shot split diffusion data in k-space
+        phase (1 x 1 x 1 x Z x X x Y)   - multiband phases
+    output
+        out   (Q x S x C x 1 x X x Y)   - multiband, coil and shot split diffusion data in k-space
+
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    C = number of acquisition coils
+    S = number of shots
+    Q = number of diffusion directions
+    '''
+
+    return torch.sum(x *multiband_phase, dim=-3, keepdim=True)
+
+def get_shot_phase(Accel_R, kdat_prep, coil2, ishape, MB, device):  #TODO: adjust or delete
+    N_diff, N_z, N_y, N_x = ishape
+    acs_shape = [N_y // 4, N_x // 4]
+    # ksp_acs = sp.resize(kdat_prep.numpy(), oshape=list(kdat_prep.shape[:-2]) + acs_shape)
+
+    yshift = []
+    for b in range(MB):
+        yshift.append(b / Accel_R)
+
+    # coils_tensor = sp.to_pytorch(coil2)
+    # TR = T.Resize(acs_shape)
+    # mps_acs_r = TR(coils_tensor[..., 0]).cpu().detach().numpy()
+    # mps_acs_i = TR(coils_tensor[..., 1]).cpu().detach().numpy()
+    # mps_acs = mps_acs_r + 1j * mps_acs_i
+
+    # sms_phase_acs = sms.get_sms_phase_shift([MB] + acs_shape, MB=MB, yshift=yshift)
+
+    _, R_shot = muse.MuseRecon(kdat_prep.detach().numpy(), coil2,
+                                MB=MB,
+                                acs_shape=acs_shape,
+                                lamda=0.01, max_iter=30,
+                                yshift=yshift,
+                                device=sp.Device(-1))
+    print('R_shot_phase')
+    print(R_shot.shape)
+    R_shot_phase = []
+    for d in range(N_diff):
+        dwi_shot = R_shot[d]
+        _, dwi_shot_phase = muse._denoising(dwi_shot, full_img_shape=[N_y, N_x])
+        R_shot_phase.append(dwi_shot_phase)
+    # phs_shots = np.swapaxes(phs_shots, 0, -2)       #(x,s,img,q,y)
+    # phs_shots = np.swapaxes(phs_shots, 1, -1)       #(x,y,img,q,s)
+    R_shot_phase = np.array(R_shot_phase)
+    phs_tensor = torch.tensor(R_shot_phase, dtype=torch.complex64).to(device) #shape (x,y,img,q,s)
+    phs_tensor.requires_grad = False
+    return phs_tensor
+
+def get_coil(slice_mb_idx, coil_path, device, MB):
+    coils = h5py.File(coil_path, 'r')
+    coil_torch = torch.tensor(coils['coil'][:], dtype=torch.complex64).to(device).detach() # c,z,x,y
+    coil_torch.requires_grad = False
+    for i in range(MB):
+        coil = torch.unsqueeze(coil_torch[:,slice_mb_idx[i],...], dim=1)
+        if i == 0:
+            coil_recon = coil
+        else:
+            coil_recon = torch.cat((coil_recon, coil), dim=1)
+    coil_recon = torch.unsqueeze(coil_recon, dim=0)
+    coil_recon = torch.unsqueeze(coil_recon, dim=0)
+    coils.close()
+    return coil_recon
+    
+def get_sms_phase(MB, N_y, N_x, Accel_R, device):
+    yshift = []
+    pat = Accel_R #undersampling factor?
+    for b in range(MB):
+        yshift.append(b / pat)
+    mb_phase = get_sms_phase_shift_torch([MB, N_y, N_x], MB=MB, yshift=yshift, device=device)     #z,x,y
+
+    # mb_phase = torch.swapaxes(mb_phase, 0, 2)
+    # mb_phase = torch.swapaxes(mb_phase, 0, 1)
+    mb_phase = torch.unsqueeze(mb_phase, 0)
+    mb_phase = torch.unsqueeze(mb_phase, 0)
+    mb_phase = torch.unsqueeze(mb_phase, 0)                                          #x,y,z,1,1,1
+    return mb_phase
+
+def get_us_mask(kdata, device):
+    #create mask
+
+    # Check if each line in the last three dimensions is zero
+    #Only take the data of one slice (hope undersampling is the same for each b value)
+    mask = torch.tensor(app._estimate_weights(kdata.detach().cpu().numpy(), None, None, -3), dtype=torch.complex64).to(device).detach()
+    mask.requires_grad = False
+    return mask
+
+def split_shots_torch(kdat, phaenc_axis=-2, shots=2):
+    """split shots within one diffusion encoding
+    """
+    # find valid phase-encoding lines
+    kdat1 = torch.swapaxes(kdat, phaenc_axis, 0)
+    kdat1.requires_grad = False
+    kdat2 = torch.reshape(kdat1, (kdat1.shape[0], -1))
+    kdat2.requires_grad = False
+
+    kdat3 = torch.sum(kdat2, axis=1)
+    kdat3.requires_grad = False
+    sampled_phaenc_ind = torch.Tensor.clone(torch.nonzero(kdat3)).ravel()
+    sampled_phaenc_ind.requires_grad = False
+    sampled_phaenc_len = len(sampled_phaenc_ind)
+
+    out_shape = torch.empty(shots, kdat2.shape[0], kdat2.shape[1], dtype=torch.complex64)
+    out_shape.requires_grad = False
+    output = torch.zeros_like(out_shape)
+    output.requires_grad = False
+
+    for l in range(sampled_phaenc_len):
+        s = l % shots
+
+        ind = sampled_phaenc_ind[l]
+        output[s, ind, :] = kdat2[ind, :]
+
+    output = torch.reshape(output, [shots] + list(kdat1.shape))
+    output = torch.swapaxes(output, 1, phaenc_axis)
+
+    return output
+
+def split_into_shots(x: np.array, N_segments: int, N_coils, N_x, N_y): #TODO: adjust or delete
+    # split kdat into shots
+    N_diff = x.shape[0]
+    kdat_prep = torch.empty(N_diff, N_segments, N_coils, N_x, N_y, dtype=torch.complex64)
+    kdat_prep.requires_grad = False
+    x = torch.tensor(x)
+    for d in range(N_diff):
+        k = split_shots_torch(x[d, ...], shots=N_segments)
+        kdat_prep[d, ...] = k
+    return kdat_prep[..., None, :, :]  # 6 dim
+
+def tv_loss(x, N_z, N_x, N_y, N_latent, beta = 0.5):
+    '''Calculates TV loss for an image `x`.
+        
+    Args:
+        x: image, torch.Variable of torch.Tensor
+        beta: See https://arxiv.org/abs/1412.0035 (fig. 2) to see effect of `beta` 
+    '''
+    x = torch.reshape(x, (N_z, N_x, N_y, N_latent))
+    diff_x = x[:,1:, :, :] - x[:,:-1, :, :]
+    diff_y = x[:,:, 1:, :] - x[:,:, :-1, :]
+
+    # Compute the TV norm by summing the L2 norm of the differences
+    tv_x = torch.sum(torch.sqrt(diff_x ** 2 + 1e-8))  # Adding epsilon to avoid sqrt(0)
+    tv_y = torch.sum(torch.sqrt(diff_y ** 2 + 1e-8))
+
+    # Combine the results from both dimensions and scale by the weight
+    tv_loss = abs(tv_x + tv_y)
+    return tv_loss
+
+def Wfor_dec(x,W,N_z,N_x,N_y):
+    '''
+    inputs:
+        x (M*N x L)  - set of coefficients to go through the forward operator
+        W            - pytorch wavelet operator
+    '''
+    L = x.shape[1]
+    x = x.reshape(N_z,N_x,N_y,L,1).permute(0,4,3,1,2)
+    l1wavelet_loss = 0.0
+    for slice in range(N_z):
+        x_slice = x[slice,...]
+        wlr, whr = W(x_slice)
+        l1wavelet_loss_slice = torch.sum(torch.abs(wlr))
+        
+        for a_whr in whr:
+            l1wavelet_loss_slice += torch.sum(torch.abs(a_whr))
+        l1wavelet_loss += l1wavelet_loss_slice
+    return l1wavelet_loss
+
+def vae_reg(model, dwiData):
+    '''Calculate the vae-filtered result.
+        
+    Args:
+        model: VAE checkpoint
+        dwiData: diffusion data 
+    '''
+    N_diff,_,_,N_z,N_x,N_y = dwiData.shape
+    baseline = dwiData[0]
+
+    dwi_scale = torch.where(baseline!=0, torch.true_divide(dwiData, baseline), torch.zeros_like(dwiData))
+
+    dwi_scaled_mag = abs(dwi_scale).float()
+    dwi_scaled_phs = torch.angle(dwiData)
+
+    
+    inputData = dwi_scaled_mag.reshape(N_diff,N_z*N_x*N_y)
+    inputData = inputData.T
+
+
+    with torch.no_grad():
+        filteredData,_,_ = model(inputData)
+
+    filteredData = filteredData.T
+    filteredData = filteredData.reshape(N_diff, 1,1, N_z, N_x, N_y)
+    
+    filteredData = filteredData * baseline * torch.exp(1j*dwi_scaled_phs)
+    criterion   = nn.MSELoss(reduction='sum')
+    
+    return criterion(torch.view_as_real(dwiData), torch.view_as_real(filteredData)), filteredData
+
+def create_fae(dwi_data, file, lam=0):#TODO: adjust or delete
+    print(dwi_data.shape)
+    dwi_data = abs(np.squeeze(dwi_data)).T * 1000
+    print(dwi_data.shape)
+
+    f = h5py.File(data_dir + diff_enc_name + '.h5', 'r')
+
+    #f = h5py.File(ACQ_DIR + '/3shell_126dir_diff_encoding.h5', 'r')
+
+    bvals = f['bvals'][:]
+    bvecs = f['bvecs'][:]
+
+    f.close()
+
+    from dipy.segment.mask import median_otsu
+    from dipy.core.gradients import gradient_table
+    gtab = gradient_table(bvals, bvecs, atol=0.1)
+
+    import dipy.reconst.dti as dti
+    from dipy.reconst.dti import fractional_anisotropy, color_fa
+    tenmodel = dti.TensorModel(gtab)
+
+
+    b0 = np.mean(abs(dwi_data), axis=-1)
+    id = b0 > np.amax(b0) * 0.01
+    mask = np.zeros_like(b0)
+    mask[id] = 1
+    # b0_mask, mask = median_otsu(b0,
+    #                             median_radius=4,
+    #                             numpass=4)
+
+    b1 = np.mean(abs(dwi_data[..., 1:]), axis=-1)
+
+
+    tenfit = tenmodel.fit(dwi_data)
+    FA = fractional_anisotropy(tenfit.evals)
+    FA[np.isnan(FA)] = 0
+    FA = np.clip(FA, 0, 1)
+    RGB = np.squeeze(color_fa(FA, tenfit.evecs))
+    MD = tenfit.md
+
+    FA  = ((mask.T) * (FA.T))
+    RGB = ((mask.T) * (RGB.T))
+    MD  = ((mask.T) * (MD.T))
+
+    if lam == 0:
+        file.create_dataset('FA', data=FA)
+        file.create_dataset('cFA', data=RGB)
+        file.create_dataset('MD', data=MD)
+        file.create_dataset('mean_dwi', data=b1)
+    else:
+        file.create_dataset('FA', data=FA)
+        file.create_dataset('cFA', data=RGB)
+        file.create_dataset('MD', data=MD)
+        file.create_dataset('mean_dwi', data=b1)
+
+def ShotRecon(y, coils, MB=1, acs_shape=[64, 64],
+              max_iter=80,
+              yshift=None,
+              device=sp.cpu_device, verbose=False):
+    """
+    Multi shot shot reconstruction:
+        1. shot-by-shot SENSE recon;
+        2. phase estimation from every shot image;
+
+    Args:
+        y (array): zero-filled k-space data with shape:
+            [Nshot, Ncoil, Nz_collap, Ny, Nx], where
+            - Nshot: # of shots per DWI,
+            - Ncoil: # of coils,
+            - Nz_collap: # of collapsed slices,
+            - Ny: # of phase-encoding lines,
+            - Nx: # of readout lines.
+
+        coils (array): coil sensitivity maps with shape:
+            [Ncoil, Nz, Ny, Nx], where
+            - Nz: # of un-collapsed slices.
+
+        MB (int): multi-band factor
+            MB = Nz / Nz_collap.
+
+        acs_shape (tuple of ints): shape of the auto-calibration signal (ACS),
+            which is used for the shot-by-shot SENSE recon.
+
+    References:
+        * Liu C, Moseley ME, Bammer R.
+          Simultaneous phase correction and SENSE reconstruction for navigated multi-shot DWI with non-Cartesian k-space sampling.
+          Magn Reson Med 2005;54:1412-1422.
+
+        * Chen NK, Guidon A, Chang HC, Song AW.
+          A robust multi-shot strategy for high-resolution diffusion weighted MRI enabled by multiplexed sensitivity-encoding (MUSE).
+          NeuroImage 2013;72:41-47.
+    """
+    Ndiff, Nshot, Ncoil, Nz_collap, Ny, Nx = y.shape
+    assert(Nshot > 1)  # MUSE is a multi-shot technique
+
+    _Ncoil, Nz, _Ny, _Nx = coils.shape
+
+    assert ((Ncoil == _Ncoil) and (Ny == _Ny) and (Nx == _Nx))
+    assert ((Nz_collap == Nz / MB))
+
+    phi = sms.get_sms_phase_shift([MB, Ny, Nx], MB, yshift=yshift)
+
+    if acs_shape is None:
+
+        ksp_acs = y.copy()
+        mps_acs = coils.copy()
+
+    else:
+
+        ksp_acs = sp.resize(y, oshape=list(y.shape[:-2]) + list(acs_shape))
+
+        import torchvision.transforms as T
+
+        coils_tensor = sp.to_pytorch(coils)
+        TR = T.Resize(acs_shape, antialias=True)
+        mps_acs_r = TR(coils_tensor[..., 0]).cpu().detach().numpy()
+        mps_acs_i = TR(coils_tensor[..., 1]).cpu().detach().numpy()
+        mps_acs = mps_acs_r + 1j * mps_acs_i
+
+    print('**** MUSE - ksp_acs shape ', ksp_acs.shape)
+    print('**** MUSE - mps_acs shape ', mps_acs.shape)
+
+    phs_shot = []
+    for z in range(Nz_collap):  # loop over collapsed k-space
+
+        slice_idx = sms.get_uncollap_slice_idx(Nz, MB, z)
+        mps_acs_slice = mps_acs[:, slice_idx, ...]
+
+        for d in range(Ndiff):
+
+            print('>> muse on slice ' + str(z).zfill(2) + ' diff ' + str(d).zfill(3))
+
+
+            xp = device.xp
+            ksp_acs = sp.to_device(ksp_acs, device=device)
+            mps_acs_slice = sp.to_device(mps_acs_slice, device=device)
+
+            y = sp.to_device(y, device=device)
+            coils = sp.to_device(coils, device=device)
+
+            # 1. perform shot-by-shot ACS SENSE recon to estimate phase
+            img_acs_shots = []
+            for s in range(Nshot):
+
+                ksp = ksp_acs[d, s, :, z, :, :]
+                ksp = ksp[..., None, :, :]
+
+                A = muse.sms_sense_linop(ksp, mps_acs_slice, yshift)
+
+                img = muse.sms_sense_solve(A, ksp, lamda=5E-5, tol=0,
+                                        max_iter=max_iter, verbose=verbose)
+
+                img_acs_shots.append(img)
+
+            img_acs_shots = xp.array(img_acs_shots)
+
+            # 2. phase estimation from shot images
+            _, phs_shots = muse._denoising(img_acs_shots,
+                                        full_img_shape=[Ny, Nx])
+            phs_shot.append(sp.to_device(phs_shots))
+
+    phs_shot = np.array(phs_shot)
+
+    return phs_shot
+
+def denoising_using_ae(dwi_muse, ishape, model, N_latent, model_type: str, device: str):
+    dwiData = np.squeeze(dwi_muse)
+
+    if dwiData.ndim == 3:
+        dwiData = dwiData[:, None, :, :]
+
+    assert dwi_muse.shape == ishape
+
+    dwi_scale = np.divide(dwiData, dwiData[0, ...],
+                        out=np.zeros_like(dwiData),
+                        where=dwiData!=0)
+
+    dwi_muse_tensor = torch.tensor(dwi_scale, device=device)
+
+    N_diff,N_z,N_x,N_y = dwi_muse_tensor.shape
+
+    dwi_model_tensor = torch.tensor(np.empty((N_z*N_x*N_y, N_diff)), device=device)
+
+    latent_shape = (N_z*N_x*N_y, N_latent)
+    latent_tensor = torch.tensor(np.empty(shape=tuple(latent_shape)), device=device)
+
+    with torch.no_grad():
+        qsig = abs(dwi_muse_tensor).float()
+        
+        inputData = qsig.permute(1,2,3,0)
+        inputData = inputData.reshape(N_z*N_x*N_y,N_diff).to(device)
+
+        if model_type == 'VAE':
+            dwi_model_tensor ,mu,logvar = model(inputData)
+            output = model.reparameterize(mu, logvar)
+        elif model_type == 'DAE':
+            dwi_model_tensor = model(inputData)
+            output = model.encode(inputData)
+
+        dwi_model_tensor = dwi_model_tensor.reshape(N_z, N_x, N_y, N_diff)
+        dwi_model_tensor = dwi_model_tensor.permute(3,0,1,2)
+
+        latent_tensor = output.reshape(N_z,N_x,N_y, N_latent)
+        latent_tensor = latent_tensor.permute(3,0,1,2)
+
+    unscaled_dwi = dwi_model_tensor.detach().cpu().numpy()
+    denoised_dwi = unscaled_dwi * dwiData[0, ...]
+
+    latent = latent_tensor.detach().cpu().numpy()
+    return denoised_dwi, latent
+
+
+def main():
+    DIR = os.path.dirname(os.path.realpath(__file__))
+
+    stream = open('decoder_recon_config.yaml', 'r')
+    config = yaml.load(stream, Loader)
+
+    N_diff         = config['N_diff']
+    modelPath       = config['modelPath']
+    muse_recon      = config['muse_recon']
+
+    data_dir        = config['data_directory']
+    move_dir        = config['move_directory']
+    coil_name       = config['coil_file_name']
+    data_name       = config['data_file_name']
+    diff_enc_name   = config['diff_enc_file_name']
+    shot_phase_dir  = config['shot_phase_directory']
+
+    save_dir        = config['save_directory']
+
+    pat             = config['pat']
+    slice_idx       = config['slice_index']
+    slice_inc       = config['slice_increment']
+    device          = config['device']
+    reg_weight      = float(config['reg_weight'])
+
+    parser = argparse.ArgumentParser(description="Parser to overwrite slice_idx and slice_inc")
+    parser.add_argument("--slice_idx", type=int, default=slice_idx, help="Slice_idx to reconstruct")
+    parser.add_argument("--slice_inc", type=int, default=slice_inc, help="slice increment if multiple slice recon")
+    args = parser.parse_args()
+    slice_idx = args.slice_idx
+    slice_inc = args.slice_inc
+
+    print(muse_recon)
+
+    deviceDec = torch.device("cpu")
+    print(deviceDec)
+
+    if config['muse_recon'] == True or config['shot_recon'] == True:
+        device = sp.Device(0)
+        xp = device.xp
+        print(device)
+
+    # %% read in raw data
+    if slice_idx == -1:
+        slice_str = '000'
+    else:
+        slice_str = '000'
+
+    print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
+    f  = h5py.File(data_dir + data_name + slice_str+ '.h5', 'r')
+    MB = f['MB'][()]
+    N_slices = f['Slices'][()]
+    N_segments = f['Segments'][()]
+    N_Accel_PE = f['Accel_PE'][()]
+    f.close()
+
+    # number of collapsed slices
+    N_slices_collap = N_slices // MB
+
+    # %% run reconstruction
+    print(' > slice index: ',slice_idx)
+    print(' > slice increment:',slice_inc)
+    print(' > multi band factor:',MB)
+    if slice_idx >= 0:
+        slice_loop = range(slice_idx, slice_idx + slice_inc, 1)
+    else:
+        #slice_loop = range(N_slices_collap)
+        slice_loop = range(N_slices_collap)
+
+    for s in slice_loop:
+        slice_str = str(s).zfill(3)
+        if os.path.exists(data_dir + '1.0mm_126-dir_R3x3_kdat_slice_' + slice_str + '.h5'):
+            print('File already in directory')
+            file_alr_there = True
+        else:
+            print('Move file from woody')
+            file_alr_there = False
+            shutil.move('/home/woody/iwbi/iwbi019h/publication/126-dir-recon/raw/1.0mm_126-dir_R3x3_kdat_slice_' + slice_str + '.h5', data_dir)
+        f  = h5py.File(data_dir + data_name +slice_str+'.h5', 'r')
+        kdat = f['kdat'][:]
+        f.close()
+
+        kdat = np.squeeze(kdat)  # 4 dim
+        kdat = np.swapaxes(kdat, -2, -3)
+        N_diff, N_coils, N_y, N_x = kdat.shape
+
+        xfm = DWTForward(J=3, mode='zero', wave='db3').to(deviceDec)
+
+        # split kdat into shots
+        N_diff = kdat.shape[-4]
+        kdat_prep = []
+        for d in range(N_diff):
+            k = retro.split_shots(kdat[d, ...], shots=N_segments)
+            kdat_prep.append(k)
+
+        kdat_prep = np.array(kdat_prep)
+        kdat_prep = kdat_prep[..., None, :, :]  # 6 dim
+
+        print(' > kdat shape: ', kdat_prep.shape)
+
+
+        slice_mb_idx = sms.map_acquire_to_ordered_slice_idx(s, N_slices, MB)
+
+        print('>> slice_mb_idx: ', slice_mb_idx)
+
+        f = h5py.File(data_dir + coil_name + '.h5', 'r')
+        coil = f['coil'][:]
+        f.close()
+        coil2 = coil[:, slice_mb_idx, :, :]
+
+        coil_path = data_dir + coil_name + '.h5'
+        coil_tensor = get_coil(slice_mb_idx,coil_path, device=deviceDec, MB=MB)
+        # coil_tensor = torch.tensor(coil2, dtype=torch.complex64, device=deviceDec)
+        kdat_tensor = torch.tensor(kdat_prep, device=deviceDec)      
+        t=time()                                
+        sms_phase_tensor = get_sms_phase(MB, N_y, N_x, pat, deviceDec) 
+        print(sms_phase_tensor.shape)
+        print('\n\nSMS phase recon time', -t+time())                       
+        mask = get_us_mask(kdat_tensor, deviceDec)
+        
+        print(deviceDec)
+
+        f = h5py.File(data_dir + diff_enc_name + '.h5', 'r')
+        bvals = f['bvals'][:]
+        bvecs = f['bvecs'][:]
+        f.close()
+        b0_mask = bvals > 50
+        # N_diff = 71
+        # modelPath = '/home/hpc/iwbi/iwbi019h/DeepSubspaceMRI/data/126dir/best_BAS_no_noise/'
+        stream = open(modelPath + 'config.yaml', 'r')
+        modelConfig = yaml.load(stream, Loader)
+        modelType = modelConfig['model']
+        model_depth = modelConfig['depth']
+        N_latent = modelConfig['latent']
+        model_activ_fct = modelConfig['activation_fct']
+        ae_dict = {'DAE':ae.DAE, 
+                   'VAE':ae.VAE}
+        
+        model = ae_dict[modelType](b0_mask=None, input_features=N_diff, latent_features=N_latent, depth=model_depth, activ_fct_str=model_activ_fct).to(deviceDec)
+        model.load_state_dict(torch.load(modelPath + 'train_'+modelType+'_Latent' +str(N_latent).zfill(2) + 'final.pt', map_location=torch.device(deviceDec)))
+        
+        model = model.float()
+
+        for param in model.parameters():
+            param.requires_grad = False
+
+
+        yshift = []
+        for b in range(MB):
+            yshift.append(b / pat)
+
+    #
+    # Muse recon
+    #
+        if config['muse_recon'] == True:
+            # kdat_prep = kdat_prep.detach().numpy()
+            print('MUSE recon')
+            museFile = h5py.File(save_dir + 'muse/MuseRecon_slice_' + slice_str + '.h5', 'w')
+            ts=time()
+            sms_phase = sms.get_sms_phase_shift([MB, N_y, N_x], MB=MB, yshift=yshift)
+
+            print('Phantom shapes:')
+            print('kdatprep.shape = ', kdat_prep.shape)
+            print('coil2.shape = ', coil2.shape)
+            print('sms_phase.shape = ', sms_phase.shape)
+            
+
+            acs_shape = [N_y // 4, N_x // 4]
+
+            # Here MUSE was adjusted to return the shot phases (phs_shot in function MuseRecon), not R_shot
+            dwi_muse, dwi_shot = muse.MuseRecon(kdat_prep, coil2, MB=MB,
+                                    acs_shape=acs_shape,
+                                    lamda=0.01, max_iter=30,
+                                    yshift=yshift,
+                                    device=device)
+
+            dwi_muse = sp.to_device(dwi_muse)
+            dwi_shot = sp.to_device(dwi_shot)
+            print('MUSE recon time', time()-ts)
+            # store output
+            museFile.create_dataset('DWI', data=dwi_muse)
+            
+            museFile.create_dataset('Shot_phases', data=dwi_shot)
+            create_fae(dwi_muse, museFile)
+            museFile.close()
+            del coil2
+            del kdat_prep
+            del sms_phase
+        
+        if config['shot_recon'] == True:
+            print('shot_recon')
+            shotFile = h5py.File(shot_phase_dir + 'PhaseRecon_slice_' + slice_str + '.h5', 'w')
+            ts=time()
+            sms_phase = sms.get_sms_phase_shift([MB, N_y, N_x], MB=MB, yshift=yshift)
+
+            print('kdatprep.shape = ', kdat_prep.shape)
+            print('coil2.shape = ', coil2.shape)
+            print('sms_phase.shape = ', sms_phase.shape)
+            
+
+            acs_shape = [N_y // 4, N_x // 4]
+
+            # Here MUSE was adjusted to return the shot phases (phs_shot in function MuseRecon), not R_shot
+            shot_phase = ShotRecon(kdat_prep, coil2, MB=MB,
+                                    acs_shape=acs_shape,
+                                    max_iter=30,
+                                    yshift=yshift,
+                                    device=device) 
+
+            shot_phase = sp.to_device(shot_phase)
+            print('Shot recon time', time()-ts)
+            # store output
+            
+            shotFile.create_dataset('Shot_phases', data=shot_phase)
+            shotFile.close()
+
+        
+    #
+    # Decoder recon
+    #
+        if config['decoder_recon'] == True:
+
+            decFile = h5py.File(save_dir + 'DecRecon_slice_' + slice_str + '.h5', 'w')
+            
+            print(shot_phase_dir + 'PhaseRecon_slice_' + slice_str + '.h5')
+            shotFile = h5py.File(shot_phase_dir + 'PhaseRecon_slice_' + slice_str + '.h5', 'r')
+            shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
+            shotFile.close() 
+
+        #########################################################
+        #                                                       #
+        #               Reconstruct b0 image                    #
+        #                                                       #
+        #########################################################
+            t=time()
+
+            N_b0 = sum(b0_mask==0)
+            b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
+            b0.requires_grad  = True
+
+            optimizer   = optim.SGD([b0],lr = 1e-1)
+
+            criterion   = nn.MSELoss(reduction='sum')
+
+            iterations  = 90
+
+            for iter in range(iterations):
+                optimizer.zero_grad()
+                
+                x_multi_shot = Multi_shot_for(b0, shot_phase_tensor[b0_mask==0,...])
+                x_coil_split = coil_for(x_multi_shot, coil_tensor[0,...])
+                x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
+                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[0,...])
+                x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
+
+                loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
+                # if reg_weight > 0:
+                #     loss_of_tv = reg_weight * tv_loss(b0, MB, N_x, N_y, N_b0)
+                #     if iter > 1:
+                #         loss += loss_of_tv
+
+                loss.backward()
+                optimizer.step()
+
+                running_loss = loss.item()
+
+                if iter % 10 == 0:
+                    print(f'iteration {iter} / {iterations}, current loss: {running_loss}')
+
+            b0 = torch.squeeze(b0)
+            decFile.create_dataset('b0', data=np.array(b0.detach().cpu().numpy()))
+            b0_avg = b0.clone().detach()
+            b0_avg = torch.mean(b0_avg, dim=0)
+            decFile.create_dataset('b0_avg', data=np.array(b0_avg.detach().cpu().numpy()))
+            high_angle_entries = abs(torch.angle(b0[0,...])*180/torch.pi) > 50
+            b0_combined = b0[0,...].clone().detach()
+            b0_combined[high_angle_entries] = b0_avg[high_angle_entries]
+            decFile.create_dataset('b0_combined', data=np.array(b0_combined.detach().cpu().numpy()))
+            b0_combined.permute(2,1,0).detach()
+            b0_combined = torch.reshape(b0_combined, (N_x*N_y*MB,1)).detach()
+            b0_avg.permute(2,1,0)
+            b0_avg = torch.reshape(b0_avg, (N_x*N_y*MB,1))
+            b0 = b0[0,...]
+            b0.permute(2,1,0).detach()
+            b0 = torch.reshape(b0, (N_x*N_y*MB,1))
+            print('b0 recon time: ', -t + time())            
+            
+            t=time()
+            lastloss = 10000000000000
+            x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
+            x_1.requires_grad  = True
+            
+            optimizer   = optim.Adam([x_1],lr = 1e-1)
+
+            criterion   = nn.MSELoss(reduction='sum')
+
+            iterations  = 150
+            loss_values = []
+
+
+            for iter in range(iterations):
+                optimizer.zero_grad()
+
+                x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_avg, x_1)
+                
+                x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
+                x_coil_split = coil_for(x_multi_shot, coil_tensor)
+                x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
+                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
+                x_masked = R(x_mb_combine, mask=mask)
+
+                # loss = criterion(torch.view_as_real(kdat_tensor),torch.view_as_real(x_masked)) + reg_weight * Wfor_dec(x_1, xfm, MB, N_x, N_y) 
+                loss = criterion(torch.view_as_real(kdat_tensor),torch.view_as_real(x_masked)) 
+                if reg_weight > 0:
+                    loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent)
+                    if iter > 1:
+                        loss += loss_of_tv
+                loss.backward()
+                optimizer.step()
+
+                running_loss = loss.item()
+                if np.isnan(running_loss):
+                    print('Loss is nan')
+                    break
+
+
+                if iter % 10 == 0:
+                    print(f'iteration {iter} / {iterations}, current loss: {running_loss}')
+                    loss_values.append(running_loss)
+                if iter > 30 and loss > lastloss:
+                    print('early stopping: epoch = ', iter)
+                    break
+                lastloss = loss
+
+            print('Decoder recon time: ', -t + time())
+            decFile.create_dataset('DWI_latent', data=np.array(x_1.detach().cpu().numpy()))
+            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)
+            decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))
+            # create_fae(x.detach().cpu().numpy(), decFile, lam=lam)
+                    
+            decFile.close()
+            create_directory(move_dir)
+            shutil.move(save_dir + 'DecRecon_slice_' + slice_str + '.h5', move_dir)
+
+    #
+    # VAE as reg
+    #
+        if config['vae_reg_recon'] == True:
+            t=time()
+            VAEregFile = h5py.File(save_dir + 'regularizer/VAEregRecon.h5', 'w')
+            print('VAE as regularizer')
+            lamdas = [0.5]
+            VAEregFile.create_dataset('vae_reg_lambdas', data =np.array(lamdas))
+            print(N_diff)
+            for lam in lamdas:
+                print(lam)
+                x_1  = torch.zeros((N_diff,1,1,MB,N_y,N_x), dtype=torch.complex64).to(deviceDec)
+                
+                x_1.requires_grad  = True
+                optimizer   = optim.SGD([x_1],lr = 1e-1)
+
+                criterion   = nn.MSELoss(reduction='sum')
+
+                iterations  = 100
+                loss_values = []
+
+
+                for iter in range(iterations):
+                    optimizer.zero_grad()
+                    
+                    x_multi_shot = Multi_shot_for(x_1, shot_phase_tensor)
+                    x_coil_split = coil_for(x_multi_shot, coil_tensor)
+                    x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
+                    x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
+                    x_masked = R(x_mb_combine, mask=mask)
+                    filtered_vae, filtered = vae_reg(model, x_1)
+                        
+                    loss = criterion(torch.view_as_real(kdat_tensor),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(x_1),torch.view_as_real(torch.zeros_like(x_1))) + lam * filtered_vae
+                    loss.backward()
+                    optimizer.step()
+                    
+                    running_loss = loss.item()
+
+                    if torch.isnan(loss):
+                        break
+
+                    if iter % 10 == 0:
+                        print(f'iteration {iter} / {iterations}, current loss: {running_loss}')
+                        # VAEregFile.create_dataset('vae_filtered_epoch' + str(iter), data =np.array(filtered.detach().cpu().numpy()))
+                        loss_values.append(running_loss)
+
+                VAEregFile.create_dataset('VAE_reg_DWI_lam_' + str(lam), data=np.array(x_1.detach().cpu().numpy()))
+                print('VAE reg recon time', -t+time())
+                if torch.isnan(loss) == False:
+                    print('\n\n\n IT WORKED!!!!!!!\n\n\n')
+                    create_fae(x_1.detach().cpu().numpy(), VAEregFile, lam=lam)
+                else:
+                    print('loss was nan')
+            VAEregFile.close()
+
+    #
+    # VAE as denoiser
+    #
+        if config['vae_denoise_recon'] == True:
+            VAEdenoiserFile = h5py.File(save_dir + 'denoiser/VAEDenoiserRecon.h5', 'w')
+            print('VAE as denoiser')
+            dwiData = np.squeeze(dwi_muse)
+
+            if dwiData.ndim == 3:
+                dwiData = dwiData[:, None, :, :]
+
+            dwi_scale = np.divide(dwiData, dwiData[0, ...],
+                                out=np.zeros_like(dwiData),
+                                where=dwiData!=0)
+
+            dwi_muse_tensor = torch.tensor(dwi_scale)
+
+            N_diff,N_z,N_x,N_y = dwi_muse_tensor.shape
+
+            dwi_model_tensor = torch.tensor(np.empty((N_z*N_x*N_y, N_diff)))
+
+            latent_shape = (N_z*N_x*N_y, N_latent)
+            latent_tensor = torch.tensor(np.empty(shape=tuple(latent_shape)))
+
+            with torch.no_grad():
+                qsig = abs(dwi_muse_tensor).float()
+                
+                inputData = qsig.permute(1,2,3,0)
+                inputData = inputData.reshape(N_z*N_x*N_y,N_diff).to(deviceDec)
+                dwi_model_tensor ,_,_ = model(inputData)
+                dwi_model_tensor = dwi_model_tensor.reshape(N_z, N_x, N_y, N_diff)
+                dwi_model_tensor = dwi_model_tensor.permute(3,0,1,2)
+                mu, logvar = model.encode(inputData)                    #N_z*N_x*N_y,Latent
+                output = model.reparameterize(mu, logvar)
+                latent_tensor = output
+                latent_tensor = latent_tensor.reshape(N_z,N_x,N_y, N_latent)
+                latent_tensor = latent_tensor.permute(3,0,1,2)
+
+            dwi_vae = dwi_model_tensor.detach().cpu().numpy()
+            dwi_vae = dwi_vae * dwiData[0, ...]
+
+            latent = latent_tensor.detach().cpu().numpy()
+
+            VAEdenoiserFile.create_dataset('VAE_as_denoiser_DWI', data=dwi_vae)
+            VAEdenoiserFile.create_dataset('VAE_as_denoiser_latent', data=latent)
+            create_fae(dwi_vae, VAEdenoiserFile)
+            VAEdenoiserFile.close()
+
+        if file_alr_there:
+            print('File was already here, no move back to woody')
+        else:
+            print('Move file back to woody')
+            shutil.move(data_dir + '1.0mm_126-dir_R3x3_kdat_slice_' + slice_str + '.h5', '/home/woody/iwbi/iwbi019h/publication/126-dir-recon/raw/')
+
+if __name__ == "__main__":
+    main()
