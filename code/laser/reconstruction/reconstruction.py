@@ -1,3 +1,15 @@
+"""
+This module implements and uses several reconstructions:
+- MUSE
+- LASER
+- AE regularized MUSE
+- denoising of MUSE data
+
+Authors:
+    Julius Glaser <julius-glaser@gmx.de>
+"""
+
+
 import argparse
 import h5py
 import os
@@ -27,7 +39,7 @@ import yaml
 from yaml import Loader
 from time import time
 
-def create_directory(path):
+def create_directory(path: str)->bool:
     """
     Creates a directory at the specified path if it doesn't already exist.
 
@@ -45,7 +57,7 @@ def create_directory(path):
         print(f"Directory already exists at: {path}")
         return False
 
-def get_sms_phase_shift_torch(ishape, MB, yshift, device):
+def get_sms_phase_shift_torch(ishape:tuple, MB:int, yshift:list, device:str)->torch.Tensor:
 
     """
     Args:
@@ -161,43 +173,19 @@ def add_noise(x_clean, scale, noiseType = 'gaussian'):
 
     return x_noisy
 
-def Decoder_for_with_b0(model, modelName, N_x, N_y, N_z, Q, x_1, b0_real, b0_imag):
+def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torch.Tensor, x_1:torch.Tensor)-> torch.Tensor:
     '''
     Takes an input data through the decoder trained for compressing signal evolution
-    input
-        model              - neural network model
-        x (X*Y x L)        - input data
-    output
-        out (Q x 1 x 1 x Z x X x Y)
-
-    L = number of latent variables
-    X = number of frequency columns
-    Y = number of phase-encoding lines
-    Z = number of acquired slices
-    Q = number of diffusion directions
-    '''
-    assert len(b0_real.shape) == 2
-    assert len(b0_imag.shape) == 2
-    if modelName == 'VAE':
-        out = model.decode(x_1)
-    elif modelName == 'Dif_Dec_VAE':
-        out,_,_ = model.decode(x_1)
-    out = (out * b0_real + 1j*out*b0_imag).reshape(N_z,N_x, N_y,Q)
-    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
-
-    # out_scaled = torch.view_as_complex(out_scaled)
-    out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_x,N_y))
-
-    return out_scaled
-
-def Decoder_for(model, N_x, N_y, N_z, Q, b0, x_1):
-    '''
-    Takes an input data through the decoder trained for compressing signal evolution
-    input
-        model              - neural network model
-        x (X*Y x L)        - input data
-    output
-        out (Q x 1 x 1 x Z x X x Y)
+    Args:
+        model (torch.nn.Module): the neural network used for decoding,
+        N_x (int): Size of x-dimension,
+        N_y (int): Size of y-dimension,
+        N_z (int): Size of z-dimension,
+        Q (int): Size of q-dimension,
+        b0 (torch.Tensor): b0 to be used for scaling of AE output, shape (X*Y*Z,1),
+        x_1 (torch.Tensor): latent real-valued reconstructions of DWI data, shape (X*Y, L)
+    Returns:
+        torch.Tensor: decoded, b0 scaled, complex valued, reshaped DWI reconstructions, shape (Q, 1, 1, Z, X, Y)
 
     L = number of latent variables
     X = number of frequency columns
@@ -207,28 +195,20 @@ def Decoder_for(model, N_x, N_y, N_z, Q, b0, x_1):
     '''
     out = model.decode(x_1)
     out = (out*torch.real(b0) + 1j*torch.imag(b0)*out).reshape(N_z,N_x, N_y,Q)
-    # out = torch.stack((out * b0_real,out * b0_imag),-1).reshape(N_z,N_x, N_y,Q,2)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
 
-    # out_scaled = torch.view_as_complex(out_scaled)
-
-
-    # out_scaled = torch.reshape(out_scaled, (N_z, N_x, N_y, Q, 2))
-    # out_scaled = out_scaled.permute(-2, 0, 1, 2, -1)    #Q,Z,X,Y,2
-
-    # out_scaled = torch.view_as_complex(out_scaled)
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_x,N_y))
 
     return out_scaled
 
-def Multi_shot_for(x, phase):
+def Multi_shot_for(x:torch.Tensor, phase:torch.Tensor)->torch.Tensor:
     '''
     Splits the acquired data in seperate acquired shots according to the shot phases
-    input
-        x     (Q x 1 x 1 x Z x X x Y)   - diffusion signal
-        phase (1 x S x 1 x Z x X x Y)   - shot phases
-    output
-        out   (Q x S x 1 x Z x X x Y)   - shot split diffusion signal
+    Args:
+        x (torch.Tensor): DWI data, shape (Q, 1, 1, Z, X, Y)
+        phase (torch.Tensor): shot phases, shape (1, S, 1, Z, X, Y)
+    Returns:
+        torch.Tensor: shot split diffusion signal, shape (Q, S, 1, Z, X, Y)
 
     X = number of frequency columns
     Y = number of phase-encoding lines
@@ -238,7 +218,7 @@ def Multi_shot_for(x, phase):
     '''
     return x * phase
 
-def Multiband_for(x, multiband_phase):
+def Multiband_for(x:torch.Tensor, multiband_phase:torch.Tensor)->torch.Tensor:
     '''
     multiplies the k-space diffusion signal with the phase of the multiband acquisition, 
     s.t. the phase between the two slices varies and the images can be split afterwards
@@ -249,11 +229,11 @@ def Multiband_for(x, multiband_phase):
           higher acceleration (CAIPIRINHA) for multi-slice imaging.
           Magn. Reson. Med. 53:684-691 (2005).
 
-    input
-        x     (Q x S x C x Z x X x Y)   - coil and shot split diffusion data in k-space
-        phase (1 x 1 x 1 x Z x X x Y)   - multiband phases
-    output
-        out   (Q x S x C x 1 x X x Y)   - multiband, coil and shot split diffusion data in k-space
+    Args:
+        x (torch.Tensor): coil and shot split diffusion data in k-space, shape (Q, S, C, Z, X, Y) 
+        phase (torch.Tensor): multiband phases, shape (1, 1, 1, Z, X, Y)
+    Returns:
+        out (torch.Tensor): multiband, coil and shot split diffusion data in k-space, shape (Q, S, C, 1, X, Y)
 
     X = number of frequency columns
     Y = number of phase-encoding lines
@@ -301,7 +281,18 @@ def get_shot_phase(Accel_R, kdat_prep, coil2, ishape, MB, device):  #TODO: adjus
     phs_tensor.requires_grad = False
     return phs_tensor
 
-def get_coil(slice_mb_idx, coil_path, device, MB):
+def get_coil(slice_mb_idx: list, coil_path: str, device: str, MB: int)->torch.Tensor:
+    '''
+    gets the coil files for the kspace data to reconstruct
+
+    Args:
+        slice_mb_idx (list): list of slice indexes contained in kspace slice
+        coil_path (str): path to coil_file
+        device (str): device of reconstruction
+        MB (int): multiband factor
+    Returns:
+        torch.Tensor: coil profiles for slices to reconstruct
+    '''
     coils = h5py.File(coil_path, 'r')
     coil_torch = torch.tensor(coils['coil'][:], dtype=torch.complex64).to(device).detach() # c,z,x,y
     coil_torch.requires_grad = False
@@ -316,32 +307,61 @@ def get_coil(slice_mb_idx, coil_path, device, MB):
     coils.close()
     return coil_recon
     
-def get_sms_phase(MB, N_y, N_x, Accel_R, device):
+def get_sms_phase(MB: int, N_y: int, N_x: int, Accel_R: int, device: str)->torch.Tensor:
+    '''
+    gets phase for the sms operation
+
+    Args:
+        MB (int): multiband factor
+        N_y (int): size of y dimension
+        N_x (int): size of x dimension
+        Accel_R (int): multiband factor
+        device (str): device of reconstruction
+        
+    Returns:
+        torch.Tensor: sms phase tensor
+    '''
+
     yshift = []
     pat = Accel_R #undersampling factor?
     for b in range(MB):
         yshift.append(b / pat)
     mb_phase = get_sms_phase_shift_torch([MB, N_y, N_x], MB=MB, yshift=yshift, device=device)     #z,x,y
 
-    # mb_phase = torch.swapaxes(mb_phase, 0, 2)
-    # mb_phase = torch.swapaxes(mb_phase, 0, 1)
     mb_phase = torch.unsqueeze(mb_phase, 0)
     mb_phase = torch.unsqueeze(mb_phase, 0)
     mb_phase = torch.unsqueeze(mb_phase, 0)                                          #x,y,z,1,1,1
     return mb_phase
 
-def get_us_mask(kdata, device):
-    #create mask
+def get_us_mask(kdata: torch.Tensor, device: str)->torch.Tensor:
+    '''
+    get the undersampling mask
 
-    # Check if each line in the last three dimensions is zero
-    #Only take the data of one slice (hope undersampling is the same for each b value)
+    Args:
+        kdata (torch.Tensor): kspace data of reconstruction
+        device (str): device of reconstruction
+        
+    Returns:
+        torch.Tensor: undersampling mask
+    '''
+
     mask = torch.tensor(app._estimate_weights(kdata.detach().cpu().numpy(), None, None, -3), dtype=torch.complex64).to(device).detach()
     mask.requires_grad = False
     return mask
 
-def split_shots_torch(kdat, phaenc_axis=-2, shots=2):
-    """split shots within one diffusion encoding
+def split_shots_torch(kdat: torch.Tensor, phaenc_axis: int=-2, shots: int=2)->torch.Tensor:
     """
+    split shots within one diffusion encoding
+
+    Args:
+        kdata (torch.Tensor): kspace data of reconstruction
+        phaenc_axis (int): axis of phase encoding
+        shots (int): number of shots of the acquisition
+        
+    Returns:
+        torch.Tensor: shot splitted diffusion direction of kspace
+    """
+
     # find valid phase-encoding lines
     kdat1 = torch.swapaxes(kdat, phaenc_axis, 0)
     kdat1.requires_grad = False
@@ -381,13 +401,20 @@ def split_into_shots(x: np.array, N_segments: int, N_coils, N_x, N_y): #TODO: ad
         kdat_prep[d, ...] = k
     return kdat_prep[..., None, :, :]  # 6 dim
 
-def tv_loss(x, N_z, N_x, N_y, N_latent, beta = 0.5):
+def tv_loss(x:torch.Tensor, N_z:int, N_x:int, N_y:int, N_latent:int, beta:float = 0.5)->float:
     '''Calculates TV loss for an image `x`.
         
     Args:
         x: image, torch.Variable of torch.Tensor
+        N_z (int): Size of z-dimension,
+        N_x (int): Size of x-dimension,
+        N_y (int): Size of y-dimension,
+        N_latent (int): Size of latent dimension,
         beta: See https://arxiv.org/abs/1412.0035 (fig. 2) to see effect of `beta` 
+    Returns:
+        float: TV-loss
     '''
+
     x = torch.reshape(x, (N_z, N_x, N_y, N_latent))
     diff_x = x[:,1:, :, :] - x[:,:-1, :, :]
     diff_y = x[:,:, 1:, :] - x[:,:, :-1, :]
@@ -400,31 +427,17 @@ def tv_loss(x, N_z, N_x, N_y, N_latent, beta = 0.5):
     tv_loss = abs(tv_x + tv_y)
     return tv_loss
 
-def Wfor_dec(x,W,N_z,N_x,N_y):
+def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.Loss, torch.Tensor]:
     '''
-    inputs:
-        x (M*N x L)  - set of coefficients to go through the forward operator
-        W            - pytorch wavelet operator
-    '''
-    L = x.shape[1]
-    x = x.reshape(N_z,N_x,N_y,L,1).permute(0,4,3,1,2)
-    l1wavelet_loss = 0.0
-    for slice in range(N_z):
-        x_slice = x[slice,...]
-        wlr, whr = W(x_slice)
-        l1wavelet_loss_slice = torch.sum(torch.abs(wlr))
-        
-        for a_whr in whr:
-            l1wavelet_loss_slice += torch.sum(torch.abs(a_whr))
-        l1wavelet_loss += l1wavelet_loss_slice
-    return l1wavelet_loss
-
-def vae_reg(model, dwiData):
-    '''Calculate the vae-filtered result.
+    filters the DWI data using VAE and calculates loss
         
     Args:
-        model: VAE checkpoint
-        dwiData: diffusion data 
+        model (torch.nn.Module): loaded VAE model
+        dwiData (torch.Tensor): diffusion data
+    
+    Returns:
+        torch.nn.loss: Loss between original DWI data and VAE filtered DWI data
+        torch.Tensor: VAE filtered DWI data
     '''
     N_diff,_,_,N_z,N_x,N_y = dwiData.shape
     baseline = dwiData[0]
@@ -450,7 +463,18 @@ def vae_reg(model, dwiData):
     
     return criterion(torch.view_as_real(dwiData), torch.view_as_real(filteredData)), filteredData
 
-def create_fae(dwi_data, file, lam=0):#TODO: adjust or delete
+def create_fae(dwi_data: torch.Tensor, file: h5py.File, lam:float=0):#TODO: adjust or delete
+    '''
+    calculates fractional anisotropy and colored fractional anisotropy of reconstructed DWI data and saves it
+        
+    Args:
+        dwi_data (torch.Tensor): reconstructed DWI data
+        file (h5py.File): h5py file to write data to
+        lam (float): used regularization weight of reconstruction
+    
+    Returns:
+    '''
+
     print(dwi_data.shape)
     dwi_data = abs(np.squeeze(dwi_data)).T * 1000
     print(dwi_data.shape)
@@ -616,7 +640,28 @@ def ShotRecon(y, coils, MB=1, acs_shape=[64, 64],
 
     return phs_shot
 
-def denoising_using_ae(dwi_muse, ishape, model, N_latent, model_type: str, device: str):
+def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module, N_latent: int, model_type: str, device: str)-> tuple[np.array, np.array]:
+    '''
+    calculates fractional anisotropy and colored fractional anisotropy of reconstructed DWI data and saves it
+        
+    Args:
+        dwi_muse (np.array): reconstructed DWI data to get denoised
+        ishape (tuple): expected shape of input data
+        model (torch.nn.Module): AE model to denoise data with
+        N_latent (int): size of latent space of network
+        model_type (str): type of model
+        device (str): device to perform reconstruction on
+    
+    Returns:
+        np.array: denoised dwi_data, shape (Q, Z, X, Y)
+        np.array: latent images of AE denoising, shape (L, Z, X, Y)
+
+    Q: q-space dimension
+    Z: z dimension
+    X: x dimension
+    Y: y dimension
+    '''
+
     dwiData = np.squeeze(dwi_muse)
 
     if dwiData.ndim == 3:
@@ -974,7 +1019,6 @@ def main():
                 x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                 x_masked = R(x_mb_combine, mask=mask)
 
-                # loss = criterion(torch.view_as_real(kdat_tensor),torch.view_as_real(x_masked)) + reg_weight * Wfor_dec(x_1, xfm, MB, N_x, N_y) 
                 loss = criterion(torch.view_as_real(kdat_tensor),torch.view_as_real(x_masked)) 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent)

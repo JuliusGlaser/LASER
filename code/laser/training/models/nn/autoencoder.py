@@ -7,6 +7,7 @@ References:
 Author:
     Soundarya Soundarresan <soundarya.soundarresan@fau.de>
     Zhengguo Tan <zhengguo.tan@gmail.com>
+    Julius Glaser <julius-glaser@gmx.de>
 """
 
 import torch
@@ -30,6 +31,9 @@ def _get_activ_fct(activ_fct:str):
     return res_fct
 
 class CustomLinearEnc(nn.Module):
+    """
+    Definition of the first encoder layer for AE, where b0 entries of the acquisition are made non learnable 
+    """
     def __init__(self, in_features, out_features, b0_mask, device, fixed_value=0):
         super(CustomLinearEnc, self).__init__()
         self.in_features = in_features
@@ -49,6 +53,9 @@ class CustomLinearEnc(nn.Module):
         return torch.nn.functional.linear(x, self.linear.weight, self.linear.bias)
 
 class CustomLinearDec(nn.Module):
+    """
+    Definition of the last decoder layer for AE, where b0 entries of the acquisition are made non learnable and the output is set to 1. 
+    """
     def __init__(self, in_features, out_features, b0_mask, device, fixed_value=40):
         super(CustomLinearDec, self).__init__()
         self.in_features = in_features
