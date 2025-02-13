@@ -1,7 +1,6 @@
 """
 This module implements utility classes for the training script
 Authors:
-
     Julius Glaser <julius-glaser@gmx.de>
 """
 
@@ -10,13 +9,22 @@ import h5py
 import os
 import sys
 import yaml
-import torch
 import numpy as np
-import torch.utils.data as data
+import torch
 from yaml import Loader
 
+from laser.training.models.nn import autoencoder as ae
+
 class Network_parameters:
-    def __init__(self, config, acquisition_dir):
+    def __init__(self, config, acquisition_dir: str):
+        """
+        Network_parameters, storing important parameters and options for the creation of training data and the network to be trained.
+
+        Args:
+            config (yaml config): config file, storing all information here used, 
+            acquisition_dir (str): path to directory where config is saved and data will be stored,
+        """
+        
         self.model = config['model']
         self.diff_model = config['diffusion_model']
         self.device = config['device']
@@ -49,12 +57,30 @@ class Network_parameters:
         self.tested_once = False
         self.config = config
 
-    def createModel(self, b0_mask, inputFeatures, device):
+    def createModel(self, b0_mask: np.array, inputFeatures: int, device:str)-> torch.nn.Module:
+        """
+        method to create neural network model.
+
+        Args:
+            b0_mask (np.array): mask to set b0 entries of sequence to have no impact in model training, 
+            inputFeatures (str): path to directory where config is saved and data will be stored,
+        
+        returns:
+            torch.nn.Module: neural network, inherited from nn.Module and defined in ae
+        """
         ae_dict = {'DAE':ae.DAE, 
                    'VAE':ae.VAE}
         return ae_dict[self.model](b0_mask, input_features=inputFeatures, latent_features=self.latent, device=device,depth=self.depth, activ_fct_str=self.activ_fct).to(device)
 
-    def selectLoss(self):
+    def selectLoss(self)->torch.nn.modules.loss:
+        """
+        method to define Loss function for NN training.
+
+        Args:
+        
+        returns:
+            torch.nn.modules.loss: torch implemented loss function
+        """
         if self.loss_function == 'MSE':
             return torch.nn.MSELoss()
         elif self.loss_function == 'L1':
@@ -62,25 +88,53 @@ class Network_parameters:
         elif self.loss_function == 'Huber':
             return torch.nn.HuberLoss()
 
-    def selectOptimizer(self, model):
+    def selectOptimizer(self, model: torch.nn.Module) -> torch.optim.optimizer:
+        """
+        method to define Loss function for NN training.
+
+        Args:
+            model (torch.nn.Module): network to be optimized        
+        returns:
+            torch.optim.optimizer: optimizer for model
+        """
+
         if self.optimizer == 'SGD':
             return torch.optim.SGD(model.parameters(), self.learning_rate, weight_decay=1E-5)
         elif self.optimizer == 'Adam':
             return torch.optim.Adam(model.parameters(), self.learning_rate)
 
     def selectDevice(self):
+        """
+        method to select device for training.
+        Args:      
+        returns:
+            torch.device: torch device to perform training on
+        """
         return torch.device(self.device)
 
-    def update_kld_weight(self, training_epoch):
-            interval = self.kld_max_weight/self.kld_weight_increase + 5
-            if training_epoch >= self.kld_start_epoch:
-                if self.kld_weight < self.kld_max_weight:
-                    self.kld_weight += self.kld_weight_increase
-                elif self.kld_restart:
-                    if (training_epoch-self.kld_start_epoch)%interval == 0:
-                        self.kld_weight = 0
+    def update_kld_weight(self, training_epoch: int):
+        """
+        method to update KLD weighting manually.
+
+        Args:
+            training_epoch (int): current epoch of training        
+        """
+        interval = self.kld_max_weight/self.kld_weight_increase + 5
+        if training_epoch >= self.kld_start_epoch:
+            if self.kld_weight < self.kld_max_weight:
+                self.kld_weight += self.kld_weight_increase
+            elif self.kld_restart:
+                if (training_epoch-self.kld_start_epoch)%interval == 0:
+                    self.kld_weight = 0
 
     def __str__(self) -> str:
+        """
+        method to print complete config.
+
+        returns:
+            str: string containing config used for training     
+        """
+
         output_str = ''
         for entry in self.config:
             if (entry.startswith('kld')) and self.model == 'DAE':
@@ -92,6 +146,12 @@ class Network_parameters:
 
 class Losses_class:
     def __init__(self, model):
+        """
+        Losses_class, storing Losses during training and testing.
+
+        Args:
+            model (str): string used to define model to train, 
+        """
         if model == 'DAE' or model == 'DAE_from_VAE':
             self.train = []
             self.test = []
@@ -127,28 +187,13 @@ class Losses_class:
             self.D_clean_over_epochs = []
             self.mse_train = 1.0
 
-        elif model == 'Diff_Dec_VAE':
-            self.train = []
-            self.test = []
-            self.mse = []
-
-            self.kld = []
-            self.testKld = []
-            self.recon = []
-            self.testRecon = []
-
-            self.D = []
-            self.D_test = []
-
-            self.standards = []
-            self.means = []
-
-            self.D_recon_over_epochs = []
-            self.D_noisy_over_epochs = []
-            self.D_clean_over_epochs = []
-            self.mse_train = 1.0
-
     def create_loss_file(self, network_parameters: Network_parameters):
+        """
+        loss file creation, storing all losses of training and testing
+
+        Args:
+            network_parameters (Network_parameters): Network parameters storing the config and resulting setup for the training, 
+        """
         epoch = network_parameters.epochs
         latent = network_parameters.latent
         model = network_parameters.model
@@ -175,6 +220,12 @@ class Losses_class:
         lossFile.close()
 
     def create_mse_loss_txt_file(self, network_parameters: Network_parameters, model):
+        """
+        create mse loss file, storing average MSE losses of testing checkpoints and the model architecture as string 
+
+        Args:
+            network_parameters (Network_parameters): Network parameters storing the config and resulting setup for the training, 
+        """
         #Create txt config file:
         completeName = os.path.join(network_parameters.acquisition_dir, "mseLoss.txt")
 

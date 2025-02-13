@@ -2,7 +2,6 @@
 This module implements the VAE training for DW-MRI
 
 Authors:
-
     Julius Glaser <julius-glaser@gmx.de>
     Zhengguo Tan <zhengguo.tan@gmail.com>
 """
