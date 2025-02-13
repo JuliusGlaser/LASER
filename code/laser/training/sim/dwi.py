@@ -142,7 +142,7 @@ def get_D_linspace(D):
     return np.linspace(D[0], D[1], D[2])
 
 
-def model_DTI(b, g, b0_threshold,
+def model_DTI_old(b, g, b0_threshold,
               Dxx=(0    , 3E-3, 9),
               Dxy=(-1E-3, 1E-3, 9),
               Dyy=(0    , 3E-3, 9),
@@ -193,7 +193,7 @@ def model_DTI(b, g, b0_threshold,
 
     return y_pick, D_pick2
 
-def model_DTI_new(b, g, b0_threshold, diff_samples, N_samples):
+def model_DTI(b, g, b0_threshold, diff_samples, N_samples):
 
     gtab = gradients.gradient_table_from_bvals_bvecs(b, g, atol=3e-2)
 
