@@ -1,3 +1,5 @@
+# Storing isotropic distributed vectors for data simulation
+
 isotropic_vectors = [( 0.6919896487, 0.0062669981, -0.7218802192 ),
                     ( 0.1567614021, -0.8033778854, 0.5744648257 ),
                     ( 0.0594196945, 0.9302939808, -0.3619701771 ),

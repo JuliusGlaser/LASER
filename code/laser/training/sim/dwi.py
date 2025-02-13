@@ -1,5 +1,6 @@
 """
 This module simulates diffusion MRI signal.
+TODO: more efficient implementation of BAS and DTI
 
 Author:
     Zhengguo Tan <zhengguo.tan@gmail.com>
@@ -8,7 +9,7 @@ Author:
 """
 
 import numpy as np
-from latrec.training.sim.isotrop_vectors import isotropic_vectors as IV60
+from laser.training.sim.isotrop_vectors import isotropic_vectors as IV60
 from dipy.sims import voxel
 from dipy.core import gradients
 
@@ -137,10 +138,8 @@ def get_perp_vecs(princ_vec):
 
     return scnd_vecs, third_vecs
 
-
 def get_D_linspace(D):
     return np.linspace(D[0], D[1], D[2])
-
 
 def model_DTI_old(b, g, b0_threshold,
               Dxx=(0    , 3E-3, 9),
@@ -193,18 +192,33 @@ def model_DTI_old(b, g, b0_threshold,
 
     return y_pick, D_pick2
 
-def model_DTI(b, g, b0_threshold, diff_samples, N_samples):
+def model_DTI(b: np.array, g: np.array, b0_threshold: int, diff_samples: int, N_samples: int) -> tuple[np.array, np.array]:
+    """
+    Simulation of DTI model data.
+    Args: 
+        b (np.array): b-values of sequence, 
+        g (np.array): gradients of sequence, 
+        b0_threshold (int): threshold value at which low b-values are set equal to b=0 TODO: implement usage,  
+        diff_samples (int): number of samples to be taken from discretized value range for diffusivity
+        N_samples (int): number of used isotropic training samples TODO: yet to be implemented, for now fixed at 60
+    returns:
+        np.array: simulated signals
+        np.array: vectors of simulated signals
+    """
 
     gtab = gradients.gradient_table_from_bvals_bvecs(b, g, atol=3e-2)
-
+    
+    # get corresponding eigenvalues for eigenvectors (diffusivity in this direction)
     evals = get_evals(diff_samples)
-
     condition = (evals[:,1] <= evals[:,0]) & (evals[:,2] <= evals[:,1])
-
     evals_filt = evals[condition,:]
 
-    princ_evec = np.array(IV60)
+    # get eigenvectors for model:
+    # principle vector, 
+    # 2nd vector perpendicular to first, rotating around first one to generate more samples TODO: make number of samples variable for second vector
+    # 3rd vector perpendicular to first two
 
+    princ_evec = np.array(IV60)
     second_evec = []
     third_evec = []
 
@@ -220,6 +234,7 @@ def model_DTI(b, g, b0_threshold, diff_samples, N_samples):
     signals = []
     evecs_res = []
 
+    # simulate diffusion DTI signals and store them signals
     for i in range(evals_filt.shape[0]):
         for l in range(princ_evec.shape[0]):
             for l2 in range(second_evec.shape[1]):
@@ -261,9 +276,22 @@ def model_t2(TE,
 
     return sig
 
-def model_BAS(b, g, b0_threshold, N_samples=None,
-              diffusivity=(0.0001    , 3E-3, 10)
-              ):
+def model_BAS(b: np.array, g: np.array, b0_threshold: int, N_samples: int =None,
+              diffusivity: tuple[float, float, float]=(0.0001    , 3E-3, 10)
+              ) -> tuple[np.array, np.array]:
+    """
+    Simulation of DTI model data.
+    Args: 
+        b (np.array): b-values of sequence, 
+        g (np.array): gradients of sequence, 
+        b0_threshold (int): threshold value at which low b-values are set equal to b=0 TODO: implement usage,  
+        N_samples (int): number of used isotropic training samples TODO: yet to be implemented, for now fixed at 60
+        diffusivity (int): number of samples to be taken from discretized value range for diffusivity
+        
+    returns:
+        np.array: simulated signals
+        np.array: vectors of simulated signals
+    """
 
     gtab = gradients.gradient_table_from_bvals_bvecs(b, g, atol=3e-2)
     diffusivity_grid = get_D_linspace(diffusivity)
@@ -307,7 +335,7 @@ def model_BAS(b, g, b0_threshold, N_samples=None,
 
     return np.array(y_pick), np.array(sticks_pick)
 
-def get_fractions(nSteps=3):
+def get_fractions(nSteps: int=3)->np.array:
     stepsize = int(100/nSteps)
     ball_size = stepsize
     while ball_size <= 100:
@@ -327,6 +355,7 @@ def get_fractions(nSteps=3):
     return fraction_array
 
 def sample_from_unit_sphere(num_pts):
+    #TODO: implement correctly
     indices = np.arange(0, num_pts, dtype=float) + 0.5
 
     phi = np.arccos(1 - 2*indices/num_pts)
