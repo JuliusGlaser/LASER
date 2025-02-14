@@ -101,62 +101,6 @@ def get_sms_phase_shift_torch(ishape:tuple, MB:int, yshift:list, device:str)->to
 
     return phi
 
-def coil_for(x: torch.Tensor, coils: torch.Tensor) -> torch.Tensor:
-    '''
-    Performs forward coil sensitivity multiplication
-    inputs:
-        x     (Q x S x 1 x Z x X x Y) - shot split diffusion signal
-        coils (1 x 1 x C x Z x X x Y) - coil sensitivity functions
-    output
-        out   (Q x S x C x Z x X x Y) - shot and coil split diffusion signal
-
-    X = number of frequency columns
-    Y = number of phase-encoding lines
-    Z = number of slices
-    C = number of acquisition coils
-    S = number of shots
-    Q = number of diffusion directions
-    '''
-    return  x * coils
-
-def fft2c_torch(x: torch.Tensor, dim) -> torch.Tensor:
-    '''
-    Performs a forward fourier transform
-    inputs:
-          x (Q x S x C x Z x X x Y) - shot and coil split diffusion signal in image space
-    outputs:
-        out (Q x S x C x Z x X x Y) - shot and coil split diffusion signal in k-space
-    
-    X = number of frequency columns
-    Y = number of phase-encoding lines
-    Z = number of slices
-    C = number of acquisition coils
-    S = number of shots
-    Q = number of diffusion directions            
-    '''
-
-
-    return torch.fft.fftshift(torch.fft.fftn(torch.fft.ifftshift(x, dim=dim), dim=dim, norm='ortho'), dim=dim)
-
-def R(data,mask):
-    '''
-    Apply undersampling mask to the diffusion signal input
-    inputs:
-        data  (Q x S x C x 1 x X x Y)   - multiband, coil and shot split diffusion data in k-space
-        mask  (Q x 1 x 1 x 1 x X x Y)   - mask to be applied in frequency and phase encoding direction and for each diffusion direction
-        
-    output:
-        out   (Q x S x C x 1 x X x Y)   - masked, multiband, coil and shot split diffusion data in k-space
-    
-    X = number of frequency columns
-    Y = number of phase-encoding lines
-    C = number of acquisition coils
-    S = number of shots
-    Q = number of diffusion directions
-    '''
-    
-    return data * mask
-
 def add_noise(x_clean, scale, noiseType = 'gaussian'):
 
     if noiseType== 'gaussian':
@@ -218,6 +162,43 @@ def Multi_shot_for(x:torch.Tensor, phase:torch.Tensor)->torch.Tensor:
     '''
     return x * phase
 
+def coil_for(x: torch.Tensor, coils: torch.Tensor) -> torch.Tensor:
+    '''
+    Performs forward coil sensitivity multiplication
+    Args:
+        x (torch.Tensor): shot split diffusion signal, shape (Q, S, 1, Z, X, Y)
+        coils (torch.Tensor): coil sensitivity functions, shape (1, 1, C, Z, X, Y)
+    Returns:
+        torch.Tensor: shot and coil split diffusion signal, shape  (Q, S, C, Z, X, Y)
+
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of slices
+    C = number of acquisition coils
+    S = number of shots
+    Q = number of diffusion directions
+    '''
+    return  x * coils
+
+def fft2c_torch(x: torch.Tensor, dim: tuple[int, int]) -> torch.Tensor:
+    '''
+    Performs a forward fourier transform
+    Args:
+        x (torch.Tensor): shot and coil split diffusion signal in image space, shape (Q, S, C, Z, X, Y)
+        dim (tuple[int, int]): dimensions to perform Fourier transform on
+    Returns:
+       torch.Tensor: shot and coil split diffusion signal in k-space, shape (Q, S, C, Z, X, Y) 
+    
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of slices
+    C = number of acquisition coils
+    S = number of shots
+    Q = number of diffusion directions            
+    '''
+
+    return torch.fft.fftshift(torch.fft.fftn(torch.fft.ifftshift(x, dim=dim), dim=dim, norm='ortho'), dim=dim)
+
 def Multiband_for(x:torch.Tensor, multiband_phase:torch.Tensor)->torch.Tensor:
     '''
     multiplies the k-space diffusion signal with the phase of the multiband acquisition, 
@@ -243,6 +224,55 @@ def Multiband_for(x:torch.Tensor, multiband_phase:torch.Tensor)->torch.Tensor:
     '''
 
     return torch.sum(x *multiband_phase, dim=-3, keepdim=True)
+
+def R(data:torch.Tensor,mask:torch.Tensor)->torch.Tensor:
+    '''
+    Apply undersampling mask to the diffusion signal input
+    Args:
+        data (torch.Tensor): multiband, coil and shot split diffusion data in k-space, shape (Q, S, C, 1, X, Y)
+        mask (torch.Tensor): mask to be applied in frequency and phase encoding direction and for each diffusion direction, shape (Q, 1, 1, 1, X, Y)
+        
+    Returns:
+        torch.Tensor: masked, multiband, coil and shot split diffusion data in k-space, shape (Q, S, C, 1, X, Y)
+    
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    C = number of acquisition coils
+    S = number of shots
+    Q = number of diffusion directions
+    '''
+    
+    return data * mask
+
+def tv_loss(x:torch.Tensor, N_z:int, N_x:int, N_y:int, N_latent:int, beta:float = 0.5)->float:
+    '''Calculates TV loss for an image `x`.
+        
+    Args:
+        x: image, torch.Variable of torch.Tensor
+        N_z (int): Size of z-dimension,
+        N_x (int): Size of x-dimension,
+        N_y (int): Size of y-dimension,
+        N_latent (int): Size of latent dimension,
+        beta: See https://arxiv.org/abs/1412.0035 (fig. 2) to see effect of `beta` 
+    Returns:
+        float: TV-loss
+    '''
+
+    x = torch.reshape(x, (N_z, N_x, N_y, N_latent))
+    diff_x = x[:,1:, :, :] - x[:,:-1, :, :]
+    diff_y = x[:,:, 1:, :] - x[:,:, :-1, :]
+
+    # Compute the TV norm by summing the L2 norm of the differences
+    tv_x = torch.sum(torch.sqrt(diff_x ** 2 + 1e-8))  # Adding epsilon to avoid sqrt(0)
+    tv_y = torch.sum(torch.sqrt(diff_y ** 2 + 1e-8))
+
+    # Combine the results from both dimensions and scale by the weight
+    tv_loss = abs(tv_x + tv_y)
+    return tv_loss
+
+############################
+###    Helper methods    ###
+############################
 
 def get_shot_phase(Accel_R, kdat_prep, coil2, ishape, MB, device):  #TODO: adjust or delete
     N_diff, N_z, N_y, N_x = ishape
@@ -400,32 +430,6 @@ def split_into_shots(x: np.array, N_segments: int, N_coils, N_x, N_y): #TODO: ad
         k = split_shots_torch(x[d, ...], shots=N_segments)
         kdat_prep[d, ...] = k
     return kdat_prep[..., None, :, :]  # 6 dim
-
-def tv_loss(x:torch.Tensor, N_z:int, N_x:int, N_y:int, N_latent:int, beta:float = 0.5)->float:
-    '''Calculates TV loss for an image `x`.
-        
-    Args:
-        x: image, torch.Variable of torch.Tensor
-        N_z (int): Size of z-dimension,
-        N_x (int): Size of x-dimension,
-        N_y (int): Size of y-dimension,
-        N_latent (int): Size of latent dimension,
-        beta: See https://arxiv.org/abs/1412.0035 (fig. 2) to see effect of `beta` 
-    Returns:
-        float: TV-loss
-    '''
-
-    x = torch.reshape(x, (N_z, N_x, N_y, N_latent))
-    diff_x = x[:,1:, :, :] - x[:,:-1, :, :]
-    diff_y = x[:,:, 1:, :] - x[:,:, :-1, :]
-
-    # Compute the TV norm by summing the L2 norm of the differences
-    tv_x = torch.sum(torch.sqrt(diff_x ** 2 + 1e-8))  # Adding epsilon to avoid sqrt(0)
-    tv_y = torch.sum(torch.sqrt(diff_y ** 2 + 1e-8))
-
-    # Combine the results from both dimensions and scale by the weight
-    tv_loss = abs(tv_x + tv_y)
-    return tv_loss
 
 def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.Loss, torch.Tensor]:
     '''
@@ -709,6 +713,9 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
 
 
 def main():
+
+    # load reconstruction config and save important parameters
+    
     DIR = os.path.dirname(os.path.realpath(__file__))
 
     stream = open('decoder_recon_config.yaml', 'r')
