@@ -757,12 +757,9 @@ def main():
         xp = device.xp
         print(device)
 
-    # %% read in raw data
-    if slice_idx == -1:
-        slice_str = '000'
-    else:
-        slice_str = '000'
+    # read in raw data and get parameters TODO: check for path correctness
 
+    slice_str = '000'
     print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
     f  = h5py.File(data_dir + data_name + slice_str+ '.h5', 'r')
     MB = f['MB'][()]
@@ -778,30 +775,22 @@ def main():
     print(' > slice index: ',slice_idx)
     print(' > slice increment:',slice_inc)
     print(' > multi band factor:',MB)
+
     if slice_idx >= 0:
         slice_loop = range(slice_idx, slice_idx + slice_inc, 1)
     else:
-        #slice_loop = range(N_slices_collap)
         slice_loop = range(N_slices_collap)
 
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        if os.path.exists(data_dir + '1.0mm_126-dir_R3x3_kdat_slice_' + slice_str + '.h5'):
-            print('File already in directory')
-            file_alr_there = True
-        else:
-            print('Move file from woody')
-            file_alr_there = False
-            shutil.move('/home/woody/iwbi/iwbi019h/publication/126-dir-recon/raw/1.0mm_126-dir_R3x3_kdat_slice_' + slice_str + '.h5', data_dir)
         f  = h5py.File(data_dir + data_name +slice_str+'.h5', 'r')
         kdat = f['kdat'][:]
         f.close()
 
+        # correct data shape
         kdat = np.squeeze(kdat)  # 4 dim
         kdat = np.swapaxes(kdat, -2, -3)
         N_diff, N_coils, N_y, N_x = kdat.shape
-
-        xfm = DWTForward(J=3, mode='zero', wave='db3').to(deviceDec)
 
         # split kdat into shots
         N_diff = kdat.shape[-4]
@@ -820,14 +809,15 @@ def main():
 
         print('>> slice_mb_idx: ', slice_mb_idx)
 
+        # Get coils
         f = h5py.File(data_dir + coil_name + '.h5', 'r')
         coil = f['coil'][:]
         f.close()
         coil2 = coil[:, slice_mb_idx, :, :]
-
         coil_path = data_dir + coil_name + '.h5'
         coil_tensor = get_coil(slice_mb_idx,coil_path, device=deviceDec, MB=MB)
-        # coil_tensor = torch.tensor(coil2, dtype=torch.complex64, device=deviceDec)
+
+
         kdat_tensor = torch.tensor(kdat_prep, device=deviceDec)      
         t=time()                                
         sms_phase_tensor = get_sms_phase(MB, N_y, N_x, pat, deviceDec) 
@@ -835,15 +825,15 @@ def main():
         print('\n\nSMS phase recon time', -t+time())                       
         mask = get_us_mask(kdat_tensor, deviceDec)
         
-        print(deviceDec)
-
         f = h5py.File(data_dir + diff_enc_name + '.h5', 'r')
         bvals = f['bvals'][:]
         bvecs = f['bvecs'][:]
         f.close()
+
         b0_mask = bvals > 50
-        # N_diff = 71
-        # modelPath = '/home/hpc/iwbi/iwbi019h/DeepSubspaceMRI/data/126dir/best_BAS_no_noise/'
+
+        # load model config of used AE and prepare it for reconstruction
+
         stream = open(modelPath + 'config.yaml', 'r')
         modelConfig = yaml.load(stream, Loader)
         modelType = modelConfig['model']
@@ -861,7 +851,7 @@ def main():
         for param in model.parameters():
             param.requires_grad = False
 
-
+        # Calculate yshift of MB acquisition
         yshift = []
         for b in range(MB):
             yshift.append(b / pat)
@@ -894,15 +884,12 @@ def main():
             dwi_muse = sp.to_device(dwi_muse)
             dwi_shot = sp.to_device(dwi_shot)
             print('MUSE recon time', time()-ts)
+
             # store output
             museFile.create_dataset('DWI', data=dwi_muse)
-            
             museFile.create_dataset('Shot_phases', data=dwi_shot)
             create_fae(dwi_muse, museFile)
             museFile.close()
-            del coil2
-            del kdat_prep
-            del sms_phase
         
         if config['shot_recon'] == True:
             print('shot_recon')
@@ -944,11 +931,8 @@ def main():
             shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
             shotFile.close() 
 
-        #########################################################
-        #                                                       #
-        #               Reconstruct b0 image                    #
-        #                                                       #
-        #########################################################
+            # Reconstruction of b0**
+
             t=time()
 
             N_b0 = sum(b0_mask==0)
@@ -971,10 +955,6 @@ def main():
                 x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
 
                 loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
-                # if reg_weight > 0:
-                #     loss_of_tv = reg_weight * tv_loss(b0, MB, N_x, N_y, N_b0)
-                #     if iter > 1:
-                #         loss += loss_of_tv
 
                 loss.backward()
                 optimizer.step()
@@ -1002,8 +982,10 @@ def main():
             b0 = torch.reshape(b0, (N_x*N_y*MB,1))
             print('b0 recon time: ', -t + time())            
             
+
+
             t=time()
-            lastloss = 10000000000000
+            # define latent image tensor
             x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
             x_1.requires_grad  = True
             
@@ -1043,10 +1025,6 @@ def main():
                 if iter % 10 == 0:
                     print(f'iteration {iter} / {iterations}, current loss: {running_loss}')
                     loss_values.append(running_loss)
-                if iter > 30 and loss > lastloss:
-                    print('early stopping: epoch = ', iter)
-                    break
-                lastloss = loss
 
             print('Decoder recon time: ', -t + time())
             decFile.create_dataset('DWI_latent', data=np.array(x_1.detach().cpu().numpy()))
@@ -1162,11 +1140,6 @@ def main():
             create_fae(dwi_vae, VAEdenoiserFile)
             VAEdenoiserFile.close()
 
-        if file_alr_there:
-            print('File was already here, no move back to woody')
-        else:
-            print('Move file back to woody')
-            shutil.move(data_dir + '1.0mm_126-dir_R3x3_kdat_slice_' + slice_str + '.h5', '/home/woody/iwbi/iwbi019h/publication/126-dir-recon/raw/')
 
 if __name__ == "__main__":
     main()
