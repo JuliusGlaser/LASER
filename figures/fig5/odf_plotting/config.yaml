@@ -1,10 +1,10 @@
-path_to_data: C:\local_laser_data\
+path_to_data: ../../data/
 dictionary:
-  muse: "MuseRecon_combined_slices"
-  llr: "JETS2"
-  dec: "DecRecon_combined_slices"
-  DTI: "DecRecon_combined_slices"
-  denoised: denoised_BAS
+  muse: "MUSE/MuseRecon_combined_slices"
+  llr: "LLR/JETS2"
+  dec: "LASER/BAS/DecRecon_combined_slices"
+  DTI: "LASER/DTI/DecRecon_combined_slices"
+  denoised: denoised_muse/denoised_BAS
 N_x: &N_x 200
 N_y: &N_y 200
 N_z: &N_z 114

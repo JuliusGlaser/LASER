@@ -1,9 +1,8 @@
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
-from sigpy.mri import retro, app, sms, muse, mussels
-import latrec.training.models.nn.autoencoder as ae
-from latrec.utility.util import *
+import laser.training.models.nn.autoencoder as ae
+from laser.utility.util import *
 import yaml
 from yaml import Loader
 import torch
@@ -11,8 +10,8 @@ import torch
 load_fonts()
 set_figure_style(label_size=30)
 
-path_to_reco = r'W:\radiologie\mrt-probanden\AG_Laun\Julius Glaser\LASER_data\dec\\'
-path_to_raw = r'W:\radiologie\mrt-probanden\AG_Laun\Julius Glaser\LASER_data\raw\\'
+path_to_reco = r'../../data/LASER/'
+path_to_raw = r'../../data/raw/'
 reco_slice = 30
 reco_file = 'DecRecon_slice_' + str(reco_slice).zfill(3) + '.h5'
 raw_file = '1.0mm_126-dir_R3x3_kdat_slice_' + str(reco_slice).zfill(3) + '.h5'
@@ -55,25 +54,6 @@ latent = latent.reshape((N_z,N_x,N_y,N_latent))
 # assert kdat_prep.shape == (N_diff, N_segments, N_coils, N_y, N_x)
 
 assert b0.shape == (N_z,N_x,N_y)
-
-# for slic in slices:
-#     for diff in range(images_diff):
-#         plt.imshow(np.rot90(abs(dwi[1+diff,slic,:,:]),2),vmax=0.0001, vmin=0,cmap='gray')
-#         plt.axis('off')
-#         plt.savefig('DWI_dir_'+str(1+diff)+'_slice_'+str(reco_slice)+'_z_'+str(slic)+'.png', bbox_inches='tight', dpi=300, pad_inches = 0)
-#     for lat in range(images_latent):
-#         plt.imshow(np.rot90(abs(latent[slic,:,:,lat]),2),vmax=1, vmin=0,cmap='gray')
-#         plt.axis('off')
-#         plt.savefig('latent_dir_'+str(lat)+'_slice_'+str(reco_slice)+'_z_'+str(slic)+'.png', bbox_inches='tight', dpi=300, pad_inches = 0)
-#     for s in range(N_segments):
-#         for k in range(images_kspace):
-#             for c in range(4):
-#                 plt.imshow(abs(kdat_prep[k,s,c,:,:]),vmax=0.00004, vmin=0,cmap='gray')
-#                 plt.axis('off')
-#                 plt.savefig('ksp_dir_'+str(k)+'_slice_'+str(reco_slice)+'_coil_'+str(c)+'_shot_'+str(s)+'.png', bbox_inches='tight', dpi=300, pad_inches = 0)
-#     plt.imshow(np.rot90(abs(b0[slic,:,:]),2),vmax=0.0004, vmin=0,cmap='gray')
-#     plt.axis('off')
-#     plt.savefig('b0_slice_'+str(reco_slice)+'_z_'+str(slic)+'.png', bbox_inches='tight', dpi=300, pad_inches = 0)
         
 # save signals
 x_ind = 125
@@ -114,7 +94,7 @@ plt.clf()
 diff_model = 'BAS'
 b0_threshold = 50
 device = 'cpu'
-BAS_dict = r'C:\Workspace\tech_note_vae_diffusion\latrec\training\trained_data\more_iso_signals\\'
+BAS_dict = r'../../code/laser/training/trained_data/'
 
 stream = open(BAS_dict + 'config.yaml', 'r')
 config = yaml.load(stream, Loader)
@@ -128,7 +108,7 @@ N_slices_collap = N_slices // N_z
 
 #load bvals and bvecs
 
-f = h5py.File(r'C:\Workspace\tech_note_vae_diffusion\latrec\raw-data\data-126-dir\1.0mm_126-dir_R3x3_dvs.h5', 'r')
+f = h5py.File(r'../../data/raw/1.0mm_126-dir_R3x3_dvs.h5', 'r')
 bvals = f['bvals'][:]
 bvecs = f['bvecs'][:]
 f.close()
