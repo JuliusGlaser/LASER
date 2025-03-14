@@ -2,6 +2,7 @@
 This module implements the VAE training for DW-MRI
 
 Authors:
+
     Julius Glaser <julius-glaser@gmx.de>
     Zhengguo Tan <zhengguo.tan@gmail.com>
 """
@@ -18,17 +19,16 @@ from yaml import Loader
 from copy import deepcopy as dc
 
 #import repo dependencies
-from latrec.training.sim import dataset
-from latrec.training.sim import dwi
-from latrec.training.sim import epi
-from latrec.training.models.nn import autoencoder as ae
-import latrec.training.linsub
-from util_classes import Losses_class as LC
-from util_classes import Network_parameters as NP
+from laser.training.sim import dataset
+from laser.training.sim import dwi
+from laser.training.models.nn import autoencoder as ae
+import laser.training.linsub
+from laser.training.util_classes import Losses_class as LC
+from laser.training.util_classes import Network_parameters as NP
 
 def train(network_parameters: NP, 
           loader_train: data.DataLoader, 
-          optim: torch.optim.optimizer, 
+          optim: torch.optim.Optimizer, 
           model: torch.nn.Module, 
           device: torch.device, 
           loss_function: torch.nn.modules.loss, 
@@ -42,7 +42,7 @@ def train(network_parameters: NP,
     Args:
         network_parameters (NP): an instance of the NetworkParameters util_classes, 
         loader_train (data.DataLoader): neural network data loader for training data, 
-        optim (torch.optim.optimizer): optimizer, 
+        optim (torch.optim.Optimizer): optimizer, 
         model (torch.nn.Module): model to be trained, 
         device (torch.device): device for training (cpu or cuda), 
         loss_function (torch.nn.modules.loss): loss function for reconstruction loss, 
@@ -63,6 +63,7 @@ def train(network_parameters: NP,
     # initialize values and set model to train
     model.train()
     scalingMatrix = torch.tensor(scalingMatrix, device=device)
+    N_diff = scalingMatrix.shape[0]
     HALF_LOG_TWO_PI = 0.91893
     train_loss = 0.0
     kld_loss = 0.0
@@ -70,7 +71,7 @@ def train(network_parameters: NP,
     train_loss = 0.0
     mse_train = 0.0
 
-    for batch_idx, (noisy_t, clean_t, D_clean, noise) in enumerate(loader_train):
+    for batch_idx, (noisy_t, clean_t, _, _) in enumerate(loader_train):
 
         noisy_t = noisy_t.type(torch.FloatTensor).to(device)
         clean_t = clean_t.type(torch.FloatTensor).to(device)
@@ -82,11 +83,12 @@ def train(network_parameters: NP,
             loss = loss_function(recon_t, clean_t)
         elif network_parameters.model == 'VAE':
             recon_t, mu, logvar = model(noisy_t)
-            k = (2*network_parameters.N_diff/network_parameters.latent)**2
+            k = (2*N_diff/network_parameters.latent)**2
 
             recon_t_scaled = recon_t*scalingMatrix
             clean_t_scaled = clean_t*scalingMatrix
 
+            # auto scaling of kld
             mse = loss_function(recon_t_scaled, clean_t_scaled)
             loggamma_x = np.log(gamma_x)
             gen_loss = torch.sum(torch.square((recon_t_scaled - clean_t_scaled)/gamma_x)/2.0 + loggamma_x + HALF_LOG_TWO_PI)/ network_parameters.batch_size_train
@@ -119,7 +121,7 @@ def train(network_parameters: NP,
 
 def test(network_parameters: NP, 
          loader_test: data.DataLoader, 
-         optim: torch.optim.optimizer, 
+         optim: torch.optim.Optimizer, 
          model: torch.nn.Module,
          device: torch.device, 
          loss_function: torch.nn.modules.loss, 
@@ -133,7 +135,7 @@ def test(network_parameters: NP,
     Args:
         network_parameters (NP): an instance of the NetworkParameters util_classes, 
         loader_test (data.DataLoader): neural network data loader for training data, 
-        optim (torch.optim.optimizer): optimizer, 
+        optim (torch.optim.Optimizer): optimizer, 
         model (torch.nn.Module): model to be trained, 
         device (torch.device): device for training (cpu or cuda), 
         loss_function (torch.nn.modules.loss): loss function for reconstruction loss, 
@@ -207,11 +209,11 @@ def test(network_parameters: NP,
                     network_parameters.acquisition_dir + out_str2)
     else:
         out_str = '/train_' + network_parameters.model + '_Latent' + str(network_parameters.latent).zfill(2) + '_epoch' + str(epoch).zfill(3) + '.pt'
-        torch.save(model.state_dict(), network_parameters.acquisition_dir + out_str)
+    torch.save(model.state_dict(), network_parameters.acquisition_dir + out_str)
     
     return Losses
 
-def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array, np.array]:
+def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array]:
     """
     Setup function for the training script, loads configuration file for training and initializes all return variables:
 
@@ -222,7 +224,6 @@ def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array, np.
         NP: network_parameters instance, storing all sorts of important parameters for training and set according to yaml config,
         np.array: simulated clean diffusion data,
         np.array: simulated clean diffusion data coefficents depending on model (BAS: stick coordinates, DTI: 3 eigenvectors of tensor),
-        np.array: B matrix from b values and g vectors,
         np.array: b0_mask, array where b0 entries of sequence b-values 0, all others 1, to later adapt the network architecture accordingly
         np.array: scaling_matrix, shape of bvals and certain factor for everyone, used to scale loss terms
     """
@@ -246,23 +247,23 @@ def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array, np.
 
     #b0 values don't have to be learned, therefore mask is created
     b0_threshold = 50
-    b0_mask = bvals > b0_threshold
+    b0_mask = None
+    if NetworkParameters.mask_usage == True:
+        b0_mask = bvals > b0_threshold
 
     # simulate data using models 
     if NetworkParameters.diff_model == 'DTI':
-        x_clean, original_D = dwi.model_DTI(bvals, bvecs, b0_threshold, 18, None)  #bvals = b, bvecs = g, returns y_pick
+        x_clean, original_D = dwi.model_DTI(bvals, bvecs, b0_threshold, 10, N_samples_first_evec=NetworkParameters.sphere_samples, N_samples_second_evec=int(NetworkParameters.sphere_samples*2/3))  #bvals = b, bvecs = g, returns y_pick
         original_D = original_D.T
         x_clean = x_clean.T
     elif NetworkParameters.diff_model == 'BAS':
-        x_clean, original_D = dwi.model_BAS(bvals, bvecs, b0_threshold)  #bvals = b, bvecs = g, returns y_pick
+        x_clean, original_D = dwi.model_BAS(bvals, bvecs, b0_threshold, N_samples=NetworkParameters.sphere_samples)  #bvals = b, bvecs = g, returns y_pick
         original_D = original_D.T
         x_clean = x_clean.T
 
     bvals = bvals[:, np.newaxis]
 
-    B = epi.get_B(bvals, bvecs)
-
-    return NetworkParameters, x_clean, original_D, B, b0_mask, scalingMatrix
+    return NetworkParameters, x_clean, original_D, b0_mask, scalingMatrix
 
 def create_noised_dataset(train_set: dataset.qSpaceDataset, 
                           test_set: dataset.qSpaceDataset, 
@@ -294,6 +295,7 @@ def create_noised_dataset(train_set: dataset.qSpaceDataset,
 
         # standard deviation of noise to be added, can be adjusted
         sd = 0.01 + id * 0.03
+        print('noise sd = ', sd)
 
         # add noise to the copies
         for index in range(len(train_set_copy)):
@@ -375,9 +377,10 @@ def main():
     ACQ_DIR = given_dir
 
     # Setup training and testing data as well as network and training parameters and file to store losses
-    NetworkParameters, x_clean, original_D, B, b0_mask, scalingMatrix = setup(ACQ_DIR)
+    NetworkParameters, x_clean, original_D, b0_mask, scalingMatrix = setup(ACQ_DIR)
+    N_diff = scalingMatrix.shape[0]
     device = NetworkParameters.selectDevice()
-    model = NetworkParameters.createModel(None, NetworkParameters.N_diff, device)
+    model = NetworkParameters.createModel(b0_mask, N_diff, device)
     loader_train, loader_test = create_data_loader(x_clean, original_D, NetworkParameters)
     loss_function = NetworkParameters.selectLoss()
     optimizer = NetworkParameters.selectOptimizer(model)

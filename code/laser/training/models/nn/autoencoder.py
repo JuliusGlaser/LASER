@@ -56,8 +56,10 @@ class CustomLinearDec(nn.Module):
     """
     Definition of the last decoder layer for AE, where b0 entries of the acquisition are made non learnable and the output is set to 1. 
     """
-    def __init__(self, in_features, out_features, b0_mask, device, fixed_value=40):
+    def __init__(self, in_features, out_features, b0_mask, device, fixed_value=40, reco: bool =False):
         super(CustomLinearDec, self).__init__()
+        self.b0_mask = b0_mask
+        self.reco = reco
         self.in_features = in_features
         self.out_features = out_features
         non_learnable_indices = [index for index, value in enumerate(b0_mask) if not value]
@@ -66,8 +68,8 @@ class CustomLinearDec(nn.Module):
         self.linear = nn.Linear(in_features, out_features)
         self.make_non_learnable()
         
-        # Create a mask to zero out the connections to the specific neuron
-        self.mask = torch.ones(out_features, in_features).to(device)
+        # # Create a mask to zero out the connections to the specific neuron
+        # self.mask = torch.ones(out_features, in_features).to(device)
     
     def make_non_learnable(self):
         with torch.no_grad():
@@ -75,11 +77,13 @@ class CustomLinearDec(nn.Module):
                 self.linear.weight[index,:] = 0
 
     def forward(self, x):
-        self.make_non_learnable()
+        if not self.reco:
+            self.make_non_learnable()
         output = torch.nn.functional.linear(x, self.linear.weight, self.linear.bias)
-        # Set the output of the specific neuron to the fixed value
-        for index in self.neuron_indices:
-            output[:,index] = self.fixed_value
+        if not self.reco:
+            # Set the output of the specific neuron to the fixed value
+            for index in self.neuron_indices:
+                output[:,index] = self.fixed_value
         return output
     
 class NormalizingLayer(nn.Module):
@@ -102,7 +106,8 @@ class DAE(nn.Module):
                  depth: int = 4,
                  activ_fct_str='Tanh',
                  encoder_features: List[int] = None,
-                 device = 'cpu'):
+                 device = 'cpu',
+                 reco = False):
 
         super(DAE, self).__init__()
 
@@ -141,7 +146,7 @@ class DAE(nn.Module):
                 decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
                 decoder_module.append(activ_fct)
             else:
-                decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device))
+                decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
                 decoder_module.append(nn.Sigmoid())
 
         self.encoder_seq = nn.Sequential(*encoder_module)
@@ -169,10 +174,10 @@ class VAE(nn.Module):
                  latent_features=15,
                  depth=4,
                  activ_fct_str='Tanh',
-                 device='cpu'):
+                 device='cpu',
+                 reco = False):
 
         super(VAE, self).__init__()
-
         encoder_module = []
         decoder_module = []
 
@@ -204,7 +209,7 @@ class VAE(nn.Module):
                 decoder_module.append(activ_fct)
             else:
                 if b0_mask is not None:
-                    decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device))
+                    decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
                 else:
                     decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
                 decoder_module.append(nn.Sigmoid())

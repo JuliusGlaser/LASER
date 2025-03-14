@@ -1,6 +1,7 @@
 """
 This module implements utility classes for the training script
 Authors:
+
     Julius Glaser <julius-glaser@gmx.de>
 """
 
@@ -9,16 +10,17 @@ import h5py
 import os
 import sys
 import yaml
-import numpy as np
 import torch
+import numpy as np
+import torch.utils.data as data
 from yaml import Loader
-
 from laser.training.models.nn import autoencoder as ae
 
 class Network_parameters:
     def __init__(self, config, acquisition_dir: str):
         """
         Network_parameters, storing important parameters and options for the creation of training data and the network to be trained.
+        Explanation for parameters is saved in the prototype.yaml
 
         Args:
             config (yaml config): config file, storing all information here used, 
@@ -27,6 +29,7 @@ class Network_parameters:
         
         self.model = config['model']
         self.diff_model = config['diffusion_model']
+        self.mask_usage = config['mask_usage']
         self.device = config['device']
         self.latent = config['latent']
         self.noise_type = config['noise_type']
@@ -35,25 +38,16 @@ class Network_parameters:
         self.epochs = config['epochs']
         self.batch_size_train = eval(config['batch_size_train'])
         self.batch_size_test = eval(config['batch_size_test'])
-
+        self.sphere_samples = config['sphere_samples']
 
         self.noise_range = config['noise_range']
-        self.N_diff = config['directions']
         self.learning_rate = config['learning_rate']
-        self.D_loss_weight = config['D_loss_weight']
-        if self.model == 'VAE':
-            self.kld_start_epoch = config['kld_start_epoch']        
-            self.kld_restart = config['kld_restart']
-            self.kld_max_weight = config['kld_max_weight']
-            self.kld_weight_increase = config['kld_weight_increase']
-
         self.optimizer = config['optimizer']
         self.loss_function = config['loss_function']
         self.device = config['device']
         self.test_epoch_step = config['test_epoch_step']
 
         self.acquisition_dir = acquisition_dir
-        self.kld_weight = 0
         self.tested_once = False
         self.config = config
 
@@ -88,14 +82,14 @@ class Network_parameters:
         elif self.loss_function == 'Huber':
             return torch.nn.HuberLoss()
 
-    def selectOptimizer(self, model: torch.nn.Module) -> torch.optim.optimizer:
+    def selectOptimizer(self, model: torch.nn.Module) -> torch.optim.Optimizer:
         """
         method to define Loss function for NN training.
 
         Args:
             model (torch.nn.Module): network to be optimized        
         returns:
-            torch.optim.optimizer: optimizer for model
+            torch.optim.Optimizer: optimizer for model
         """
 
         if self.optimizer == 'SGD':
@@ -112,29 +106,7 @@ class Network_parameters:
         """
         return torch.device(self.device)
 
-    def update_kld_weight(self, training_epoch: int):
-        """
-        method to update KLD weighting manually.
-
-        Args:
-            training_epoch (int): current epoch of training        
-        """
-        interval = self.kld_max_weight/self.kld_weight_increase + 5
-        if training_epoch >= self.kld_start_epoch:
-            if self.kld_weight < self.kld_max_weight:
-                self.kld_weight += self.kld_weight_increase
-            elif self.kld_restart:
-                if (training_epoch-self.kld_start_epoch)%interval == 0:
-                    self.kld_weight = 0
-
     def __str__(self) -> str:
-        """
-        method to print complete config.
-
-        returns:
-            str: string containing config used for training     
-        """
-
         output_str = ''
         for entry in self.config:
             if (entry.startswith('kld')) and self.model == 'DAE':
