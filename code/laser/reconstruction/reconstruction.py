@@ -17,23 +17,16 @@ import os
 import numpy as np
 import sigpy as sp
 
-from sigpy.mri import retro, app, sms, muse, mussels
+from sigpy.mri import retro, app, sms, muse
 from os.path import exists
-import shutil
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-import scipy.io as sio
 import numpy as np
 import time 
-import matplotlib.pyplot as plt
-import torchvision.transforms as T
-from pytorch_wavelets import DTCWTForward, DTCWTInverse, DWTForward,DWTInverse
 
 from latrec.training.models.nn import autoencoder as ae
-from latrec.training.sim import dwi
 
 import yaml
 from yaml import Loader
@@ -140,7 +133,6 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     out = model.decode(x_1)
     out = (out*torch.real(b0) + 1j*torch.imag(b0)*out).reshape(N_z,N_x, N_y,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
-
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_x,N_y))
 
     return out_scaled
@@ -230,7 +222,7 @@ def R(data:torch.Tensor,mask:torch.Tensor)->torch.Tensor:
     Apply undersampling mask to the diffusion signal input
     Args:
         data (torch.Tensor): multiband, coil and shot split diffusion data in k-space, shape (Q, S, C, 1, X, Y)
-        mask (torch.Tensor): mask to be applied in frequency and phase encoding direction and for each diffusion direction, shape (Q, 1, 1, 1, X, Y)
+        mask (torch.Tensor): mask to be applied in frequency and phase encoding direction and for each diffusion direction, shape (Q, S, C, 1, X, Y)
         
     Returns:
         torch.Tensor: masked, multiband, coil and shot split diffusion data in k-space, shape (Q, S, C, 1, X, Y)
@@ -420,18 +412,7 @@ def split_shots_torch(kdat: torch.Tensor, phaenc_axis: int=-2, shots: int=2)->to
 
     return output
 
-def split_into_shots(x: np.array, N_segments: int, N_coils, N_x, N_y): #TODO: adjust or delete
-    # split kdat into shots
-    N_diff = x.shape[0]
-    kdat_prep = torch.empty(N_diff, N_segments, N_coils, N_x, N_y, dtype=torch.complex64)
-    kdat_prep.requires_grad = False
-    x = torch.tensor(x)
-    for d in range(N_diff):
-        k = split_shots_torch(x[d, ...], shots=N_segments)
-        kdat_prep[d, ...] = k
-    return kdat_prep[..., None, :, :]  # 6 dim
-
-def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.Loss, torch.Tensor]:
+def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.MSELoss, torch.Tensor]:
     '''
     filters the DWI data using VAE and calculates loss
         
@@ -440,7 +421,7 @@ def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.Loss,
         dwiData (torch.Tensor): diffusion data
     
     Returns:
-        torch.nn.loss: Loss between original DWI data and VAE filtered DWI data
+        torch.nn.MSELoss: Loss between original DWI data and VAE filtered DWI data
         torch.Tensor: VAE filtered DWI data
     '''
     N_diff,_,_,N_z,N_x,N_y = dwiData.shape
@@ -466,73 +447,6 @@ def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.Loss,
     criterion   = nn.MSELoss(reduction='sum')
     
     return criterion(torch.view_as_real(dwiData), torch.view_as_real(filteredData)), filteredData
-
-def create_fae(dwi_data: torch.Tensor, file: h5py.File, lam:float=0):#TODO: adjust or delete
-    '''
-    calculates fractional anisotropy and colored fractional anisotropy of reconstructed DWI data and saves it
-        
-    Args:
-        dwi_data (torch.Tensor): reconstructed DWI data
-        file (h5py.File): h5py file to write data to
-        lam (float): used regularization weight of reconstruction
-    
-    Returns:
-    '''
-
-    print(dwi_data.shape)
-    dwi_data = abs(np.squeeze(dwi_data)).T * 1000
-    print(dwi_data.shape)
-
-    f = h5py.File(data_dir + diff_enc_name + '.h5', 'r')
-
-    #f = h5py.File(ACQ_DIR + '/3shell_126dir_diff_encoding.h5', 'r')
-
-    bvals = f['bvals'][:]
-    bvecs = f['bvecs'][:]
-
-    f.close()
-
-    from dipy.segment.mask import median_otsu
-    from dipy.core.gradients import gradient_table
-    gtab = gradient_table(bvals, bvecs, atol=0.1)
-
-    import dipy.reconst.dti as dti
-    from dipy.reconst.dti import fractional_anisotropy, color_fa
-    tenmodel = dti.TensorModel(gtab)
-
-
-    b0 = np.mean(abs(dwi_data), axis=-1)
-    id = b0 > np.amax(b0) * 0.01
-    mask = np.zeros_like(b0)
-    mask[id] = 1
-    # b0_mask, mask = median_otsu(b0,
-    #                             median_radius=4,
-    #                             numpass=4)
-
-    b1 = np.mean(abs(dwi_data[..., 1:]), axis=-1)
-
-
-    tenfit = tenmodel.fit(dwi_data)
-    FA = fractional_anisotropy(tenfit.evals)
-    FA[np.isnan(FA)] = 0
-    FA = np.clip(FA, 0, 1)
-    RGB = np.squeeze(color_fa(FA, tenfit.evecs))
-    MD = tenfit.md
-
-    FA  = ((mask.T) * (FA.T))
-    RGB = ((mask.T) * (RGB.T))
-    MD  = ((mask.T) * (MD.T))
-
-    if lam == 0:
-        file.create_dataset('FA', data=FA)
-        file.create_dataset('cFA', data=RGB)
-        file.create_dataset('MD', data=MD)
-        file.create_dataset('mean_dwi', data=b1)
-    else:
-        file.create_dataset('FA', data=FA)
-        file.create_dataset('cFA', data=RGB)
-        file.create_dataset('MD', data=MD)
-        file.create_dataset('mean_dwi', data=b1)
 
 def ShotRecon(y, coils, MB=1, acs_shape=[64, 64],
               max_iter=80,
@@ -644,7 +558,7 @@ def ShotRecon(y, coils, MB=1, acs_shape=[64, 64],
 
     return phs_shot
 
-def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module, N_latent: int, model_type: str, device: str)-> tuple[np.array, np.array]:
+def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module, N_latent: int, model_type: str, device: str, bvals: np.array)-> tuple[np.array, np.array]:
     '''
     calculates fractional anisotropy and colored fractional anisotropy of reconstructed DWI data and saves it
         
@@ -655,6 +569,7 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
         N_latent (int): size of latent space of network
         model_type (str): type of model
         device (str): device to perform reconstruction on
+        bvals (np.array): acquisition used b-values
     
     Returns:
         np.array: denoised dwi_data, shape (Q, Z, X, Y)
@@ -673,7 +588,15 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
 
     assert dwi_muse.shape == ishape
 
-    dwi_scale = np.divide(dwiData, dwiData[0, ...],
+    b0_mask = bvals > 50
+
+    b0 = dwiData[b0_mask, ...]
+    b0_avg = np.mean(b0, dim=0)
+    high_angle_entries = abs(np.angle(b0[0,...])*180/np.pi) > 50
+    b0_combined = b0[0,...]
+    b0_combined[high_angle_entries] = b0_avg[high_angle_entries]
+
+    dwi_scale = np.divide(dwiData, b0_combined,
                         out=np.zeros_like(dwiData),
                         where=dwiData!=0)
 
@@ -706,7 +629,7 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
         latent_tensor = latent_tensor.permute(3,0,1,2)
 
     unscaled_dwi = dwi_model_tensor.detach().cpu().numpy()
-    denoised_dwi = unscaled_dwi * dwiData[0, ...]
+    denoised_dwi = unscaled_dwi * b0_combined
 
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
@@ -718,23 +641,22 @@ def main():
     
     DIR = os.path.dirname(os.path.realpath(__file__))
 
-    stream = open('decoder_recon_config.yaml', 'r')
+    stream = open('config.yaml', 'r')
     config = yaml.load(stream, Loader)
 
-    N_diff         = config['N_diff']
-    modelPath       = config['modelPath']
     muse_recon      = config['muse_recon']
+    shot_recon      = config['shot_recon']
+    LASER           = config['LASER']
+    vae_reg_recon   = config['vae_reg_recon']
+    vae_denoise     = config['vae_denoise_recon']
 
+    modelPath       = config['modelPath']
     data_dir        = config['data_directory']
-    move_dir        = config['move_directory']
     coil_name       = config['coil_file_name']
     data_name       = config['data_file_name']
     diff_enc_name   = config['diff_enc_file_name']
-    shot_phase_dir  = config['shot_phase_directory']
-
     save_dir        = config['save_directory']
 
-    pat             = config['pat']
     slice_idx       = config['slice_index']
     slice_inc       = config['slice_increment']
     device          = config['device']
@@ -747,17 +669,20 @@ def main():
     slice_idx = args.slice_idx
     slice_inc = args.slice_inc
 
-    print(muse_recon)
+    print('>> Following reconstructions are run (if True):')
+    print('>> Muse reconstruction: ',muse_recon)
+    print('>> Shot phase reconstruction: ',shot_recon)
+    print('>> LASER: ', LASER)
+    print('>> VAE regularized reconstruction: ',vae_reg_recon)
+    print('>> VAE denoising: ',vae_denoise)
 
-    deviceDec = torch.device("cpu")
-    print(deviceDec)
+    deviceDec = torch.device(device)
+    print('>> LASER devide:', deviceDec)
 
-    if config['muse_recon'] == True or config['shot_recon'] == True:
+    if muse_recon or shot_recon:
         device = sp.Device(0)
         xp = device.xp
-        print(device)
-
-    # read in raw data and get parameters TODO: check for path correctness
+        print('>> Muse devide:', device)
 
     slice_str = '000'
     print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
@@ -772,9 +697,9 @@ def main():
     N_slices_collap = N_slices // MB
 
     # %% run reconstruction
-    print(' > slice index: ',slice_idx)
-    print(' > slice increment:',slice_inc)
-    print(' > multi band factor:',MB)
+    print('>> slice index: ',slice_idx)
+    print('>> slice increment:',slice_inc)
+    print('>> multi band factor:',MB)
 
     if slice_idx >= 0:
         slice_loop = range(slice_idx, slice_idx + slice_inc, 1)
@@ -802,7 +727,7 @@ def main():
         kdat_prep = np.array(kdat_prep)
         kdat_prep = kdat_prep[..., None, :, :]  # 6 dim
 
-        print(' > kdat shape: ', kdat_prep.shape)
+        print('>> kdat shape: ', kdat_prep.shape)
 
 
         slice_mb_idx = sms.map_acquire_to_ordered_slice_idx(s, N_slices, MB)
@@ -820,17 +745,15 @@ def main():
 
         kdat_tensor = torch.tensor(kdat_prep, device=deviceDec)      
         t=time()                                
-        sms_phase_tensor = get_sms_phase(MB, N_y, N_x, pat, deviceDec) 
+        sms_phase_tensor = get_sms_phase(MB, N_y, N_x, N_Accel_PE-1, deviceDec) 
         print(sms_phase_tensor.shape)
-        print('\n\nSMS phase recon time', -t+time())                       
+        print('\n\n>> SMS phase recon time', -t+time())                       
         mask = get_us_mask(kdat_tensor, deviceDec)
         
         f = h5py.File(data_dir + diff_enc_name + '.h5', 'r')
         bvals = f['bvals'][:]
         bvecs = f['bvecs'][:]
         f.close()
-
-        b0_mask = bvals > 50
 
         # load model config of used AE and prepare it for reconstruction
 
@@ -840,10 +763,13 @@ def main():
         model_depth = modelConfig['depth']
         N_latent = modelConfig['latent']
         model_activ_fct = modelConfig['activation_fct']
+        b0_mask = None
+        if modelConfig['mask_usage']:
+            b0_mask = bvals > 50
         ae_dict = {'DAE':ae.DAE, 
                    'VAE':ae.VAE}
         
-        model = ae_dict[modelType](b0_mask=None, input_features=N_diff, latent_features=N_latent, depth=model_depth, activ_fct_str=model_activ_fct).to(deviceDec)
+        model = ae_dict[modelType](b0_mask=b0_mask, input_features=N_diff, latent_features=N_latent, depth=model_depth, activ_fct_str=model_activ_fct, device=deviceDec, reco=True).to(deviceDec)
         model.load_state_dict(torch.load(modelPath + 'train_'+modelType+'_Latent' +str(N_latent).zfill(2) + 'final.pt', map_location=torch.device(deviceDec)))
         
         model = model.float()
@@ -854,23 +780,16 @@ def main():
         # Calculate yshift of MB acquisition
         yshift = []
         for b in range(MB):
-            yshift.append(b / pat)
+            yshift.append(b / N_Accel_PE-1)
 
     #
     # Muse recon
     #
-        if config['muse_recon'] == True:
+        if muse_recon:
             # kdat_prep = kdat_prep.detach().numpy()
-            print('MUSE recon')
-            museFile = h5py.File(save_dir + 'muse/MuseRecon_slice_' + slice_str + '.h5', 'w')
-            ts=time()
-            sms_phase = sms.get_sms_phase_shift([MB, N_y, N_x], MB=MB, yshift=yshift)
-
-            print('Phantom shapes:')
-            print('kdatprep.shape = ', kdat_prep.shape)
-            print('coil2.shape = ', coil2.shape)
-            print('sms_phase.shape = ', sms_phase.shape)
-            
+            print('>> Muse reconstruction')
+            museFile = h5py.File(save_dir + 'MUSE/MuseRecon_slice_' + slice_str + '.h5', 'w')
+            ts=time()         
 
             acs_shape = [N_y // 4, N_x // 4]
 
@@ -883,24 +802,20 @@ def main():
 
             dwi_muse = sp.to_device(dwi_muse)
             dwi_shot = sp.to_device(dwi_shot)
-            print('MUSE recon time', time()-ts)
+            print('>> Muse recon time', time()-ts)
 
             # store output
             museFile.create_dataset('DWI', data=dwi_muse)
             museFile.create_dataset('Shot_phases', data=dwi_shot)
-            create_fae(dwi_muse, museFile)
             museFile.close()
         
-        if config['shot_recon'] == True:
-            print('shot_recon')
-            shotFile = h5py.File(shot_phase_dir + 'PhaseRecon_slice_' + slice_str + '.h5', 'w')
-            ts=time()
-            sms_phase = sms.get_sms_phase_shift([MB, N_y, N_x], MB=MB, yshift=yshift)
-
-            print('kdatprep.shape = ', kdat_prep.shape)
-            print('coil2.shape = ', coil2.shape)
-            print('sms_phase.shape = ', sms_phase.shape)
-            
+    #
+    # shot phase recon
+    #
+        if shot_recon:
+            print('>> shot_recon')
+            shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'w')
+            ts=time()        
 
             acs_shape = [N_y // 4, N_x // 4]
 
@@ -918,21 +833,20 @@ def main():
             shotFile.create_dataset('Shot_phases', data=shot_phase)
             shotFile.close()
 
-        
     #
-    # Decoder recon
+    # LAtent Space dEcoded Reconstruction (LASER)
     #
-        if config['decoder_recon'] == True:
+        if LASER:
 
-            decFile = h5py.File(save_dir + 'DecRecon_slice_' + slice_str + '.h5', 'w')
-            
-            print(shot_phase_dir + 'PhaseRecon_slice_' + slice_str + '.h5')
-            shotFile = h5py.File(shot_phase_dir + 'PhaseRecon_slice_' + slice_str + '.h5', 'r')
+            decFile = h5py.File(save_dir + 'LASER/DecRecon_slice_' + slice_str + '.h5', 'w')
+
+            print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
+            shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
             shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
-            shotFile.close() 
+            shotFile.close()
 
             # Reconstruction of b0**
-
+            print('>> Reconstruction of b0**')
             t=time()
 
             N_b0 = sum(b0_mask==0)
@@ -962,7 +876,7 @@ def main():
                 running_loss = loss.item()
 
                 if iter % 10 == 0:
-                    print(f'iteration {iter} / {iterations}, current loss: {running_loss}')
+                    print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
 
             b0 = torch.squeeze(b0)
             decFile.create_dataset('b0', data=np.array(b0.detach().cpu().numpy()))
@@ -980,9 +894,7 @@ def main():
             b0 = b0[0,...]
             b0.permute(2,1,0).detach()
             b0 = torch.reshape(b0, (N_x*N_y*MB,1))
-            print('b0 recon time: ', -t + time())            
-            
-
+            print('>> b0 recon time: ', -t + time())            
 
             t=time()
             # define latent image tensor
@@ -999,16 +911,18 @@ def main():
 
             for iter in range(iterations):
                 optimizer.zero_grad()
+                loss = 0.0
+                # batching over coil dimension to reduce size of RAM needed on GPU
+                for c in range(N_coils):
+                    
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)             
+                    x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
+                    x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
+                    x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
+                    x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
+                    x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
+                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
 
-                x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_avg, x_1)
-                
-                x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
-                x_coil_split = coil_for(x_multi_shot, coil_tensor)
-                x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
-                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
-                x_masked = R(x_mb_combine, mask=mask)
-
-                loss = criterion(torch.view_as_real(kdat_tensor),torch.view_as_real(x_masked)) 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent)
                     if iter > 1:
@@ -1018,35 +932,32 @@ def main():
 
                 running_loss = loss.item()
                 if np.isnan(running_loss):
-                    print('Loss is nan')
+                    print('>> Loss is nan')
                     break
 
-
                 if iter % 10 == 0:
-                    print(f'iteration {iter} / {iterations}, current loss: {running_loss}')
+                    print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
                     loss_values.append(running_loss)
 
-            print('Decoder recon time: ', -t + time())
-            decFile.create_dataset('DWI_latent', data=np.array(x_1.detach().cpu().numpy()))
+            print('>> Reconstruction time: ', -t + time())
+            lat_img = x_1.detach().cpu().numpy()
+            lat_img = np.reshape(lat_img, (MB, N_x, N_y, N_latent))
+            lat_img = np.transpose(lat_img, (-1,0,1,2))
+            decFile.create_dataset('DWI_latent', data=lat_img)
             x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)
-            decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))
-            # create_fae(x.detach().cpu().numpy(), decFile, lam=lam)
-                    
+            decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))                    
             decFile.close()
-            create_directory(move_dir)
-            shutil.move(save_dir + 'DecRecon_slice_' + slice_str + '.h5', move_dir)
 
     #
-    # VAE as reg
+    # VAE as regularizer
     #
-        if config['vae_reg_recon'] == True:
+        if vae_reg_recon:
             t=time()
-            VAEregFile = h5py.File(save_dir + 'regularizer/VAEregRecon.h5', 'w')
-            print('VAE as regularizer')
+            print('>> VAE as regularizer')
             lamdas = [0.5]
-            VAEregFile.create_dataset('vae_reg_lambdas', data =np.array(lamdas))
             print(N_diff)
             for lam in lamdas:
+                VAEregFile = h5py.File(save_dir + 'regularizer/VAE_reg_lamda_' + str(lam) + 'recon_slice_' + slice_str + '.h5', 'w')
                 print(lam)
                 x_1  = torch.zeros((N_diff,1,1,MB,N_y,N_x), dtype=torch.complex64).to(deviceDec)
                 
@@ -1083,21 +994,16 @@ def main():
                         # VAEregFile.create_dataset('vae_filtered_epoch' + str(iter), data =np.array(filtered.detach().cpu().numpy()))
                         loss_values.append(running_loss)
 
-                VAEregFile.create_dataset('VAE_reg_DWI_lam_' + str(lam), data=np.array(x_1.detach().cpu().numpy()))
-                print('VAE reg recon time', -t+time())
-                if torch.isnan(loss) == False:
-                    print('\n\n\n IT WORKED!!!!!!!\n\n\n')
-                    create_fae(x_1.detach().cpu().numpy(), VAEregFile, lam=lam)
-                else:
-                    print('loss was nan')
+                VAEregFile.create_dataset('DWI', data=np.array(x_1.detach().cpu().numpy()))
+                print('>> VAE regularized recon time', -t+time())
             VAEregFile.close()
 
     #
     # VAE as denoiser
     #
-        if config['vae_denoise_recon'] == True:
+        if vae_denoise:
             VAEdenoiserFile = h5py.File(save_dir + 'denoiser/VAEDenoiserRecon.h5', 'w')
-            print('VAE as denoiser')
+            print('>> VAE as denoiser')
             dwiData = np.squeeze(dwi_muse)
 
             if dwiData.ndim == 3:
@@ -1135,9 +1041,8 @@ def main():
 
             latent = latent_tensor.detach().cpu().numpy()
 
-            VAEdenoiserFile.create_dataset('VAE_as_denoiser_DWI', data=dwi_vae)
-            VAEdenoiserFile.create_dataset('VAE_as_denoiser_latent', data=latent)
-            create_fae(dwi_vae, VAEdenoiserFile)
+            VAEdenoiserFile.create_dataset('DWI', data=dwi_vae)
+            VAEdenoiserFile.create_dataset('DWI_latent', data=latent)
             VAEdenoiserFile.close()
 
 
