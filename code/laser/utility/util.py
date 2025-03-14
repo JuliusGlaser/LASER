@@ -15,6 +15,7 @@ from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import font_manager
+import os
 
 def _normalize_dims(dims, ndim):
     if dims is None:
@@ -120,3 +121,21 @@ def set_figure_style(font='Times New Roman', font_size=12, title_size=16, label_
     plt.rcParams['axes.titlesize'] = title_size  # Font size of the axes title
     plt.rcParams['axes.labelsize'] = label_size  # Font size of the x and y labels
     plt.rcParams['legend.fontsize'] = legend_size  # Font size of the legend
+
+def create_directory(path: str)->bool:
+    """
+    Creates a directory at the specified path if it doesn't already exist.
+
+    Parameters:
+    path (str): The directory path to create.
+
+    Returns:
+    bool: True if the directory was created, False if it already exists.
+    """
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Directory created at: {path}")
+        return True
+    else:
+        print(f"Directory already exists at: {path}")
+        return False
