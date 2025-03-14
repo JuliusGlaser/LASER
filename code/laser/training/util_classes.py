@@ -46,6 +46,7 @@ class Network_parameters:
         self.loss_function = config['loss_function']
         self.device = config['device']
         self.test_epoch_step = config['test_epoch_step']
+        self.dvs_file_path = config['dvs_file_path']
 
         self.acquisition_dir = acquisition_dir
         self.tested_once = False

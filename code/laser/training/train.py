@@ -237,7 +237,7 @@ def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array]:
 
     # load sequence info here, which stores bvals and gradient vectors
     # if different than usual data is used, please adapt here
-    f = h5py.File('../../../data/raw/1.0mm_126-dir_R3x3_refs.h5', 'r')
+    f = h5py.File(NetworkParameters['dvs_file_path'], 'r')
 
     bvals = f['bvals'][:]
     bvecs = f['bvecs'][:]
@@ -341,10 +341,10 @@ def create_data_loader(x_clean: np.array,
     x_no_noise_yet = dc(x_clean)
     original_D = np.transpose(original_D)
 
-    print('>>shape x_clean = ', x_clean.shape)
-    print('>>shape x_no_noise_yet = ', x_no_noise_yet.shape)
-    print('>>shape original_D = ', original_D.shape)
-    print('>>shape noise_amount_full = ', noise_amount_full.shape)
+    print('>> shape x_clean = ', x_clean.shape)
+    print('>> shape x_no_noise_yet = ', x_no_noise_yet.shape)
+    print('>> shape original_D = ', original_D.shape)
+    print('>> shape noise_amount_full = ', noise_amount_full.shape)
 
     # creates qSpaceDataset from simulated data, inherited from torch dataset and adding functionality
     q_dataset = dataset.qSpaceDataset(x_clean, x_no_noise_yet, original_D, noise_amount_full)
@@ -372,8 +372,8 @@ def main():
     torch.manual_seed(0)
 
     # reading in path to directory, where to store data and find config yaml
-    given_dir = sys.argv[1] if len(sys.argv) > 1 else print('No directory handed over!')
-    print(f'> directory: {given_dir}\n')
+    given_dir = sys.argv[1] if len(sys.argv) > 1 else print('>> No directory handed over!')
+    print(f'>> directory: {given_dir}\n')
     ACQ_DIR = given_dir
 
     # Setup training and testing data as well as network and training parameters and file to store losses
