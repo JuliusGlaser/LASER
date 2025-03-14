@@ -1,0 +1,16 @@
+# This config defines variables for the denoising_comp.py script which implements a comparison of deep-learning based denoisings and linear subspace denoising
+
+N_x: 200                                                            # X samples
+N_y: 200                                                            # Y samples
+N_z: 114                                                            # slices of data (of file or complete combined data)
+N_q: 126                                                            # diffusion encodings of data
+b0_threshold: 50                                                    # b0 threshold
+device: 'cpu'                                                       # device to run denoising on
+
+BAS_dir: r'../training/trained_data/BAS/'                           # path to directory of VAE BAS model checkpoint
+DTI_dir: r'../training/trained_data/DTI/'                           # path to directory of VAE DTI model checkpoint
+dvs_file_path: r'../../../data/raw/1.0mm_126-dir_R3x3_dvs.h5'       # path to dvs file
+muse_data_path: r'../../../data/MUSE/MuseRecon_combined_slices.h5'  # path to MUSE data (data to get denoised)
+
+Dictionary_sphere_samples: 60                                       # Samples from unit sphere for dictionary data (meaning depends on diffusion model)
+NR: 1                                                                # Noise distributions to be added to simulated dictionary (0 or 1 leads to no noise)

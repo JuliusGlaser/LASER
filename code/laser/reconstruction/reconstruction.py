@@ -26,7 +26,7 @@ import torch.optim as optim
 import numpy as np
 import time 
 
-from latrec.training.models.nn import autoencoder as ae
+from laser.training.models.nn import autoencoder as ae
 
 import yaml
 from yaml import Loader
