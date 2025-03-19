@@ -680,7 +680,7 @@ def main():
 
     if muse_recon or shot_recon:
         device = sp.Device(-1)               # 0  for gpu, -1 for cpu
-        # xp = device.xp
+        # xp = device.xp #TODO: fix cuda support
         print('>> Muse devide:', device)
 
     slice_str = '000'
@@ -699,6 +699,7 @@ def main():
     print('>> slice index: ',slice_idx)
     print('>> slice increment:',slice_inc)
     print('>> multi band factor:',MB)
+    print('>> PE acceleration ',N_Accel_PE)
 
     if slice_idx >= 0:
         slice_loop = range(slice_idx, slice_idx + slice_inc, 1)
@@ -744,7 +745,7 @@ def main():
 
         kdat_tensor = torch.tensor(kdat_prep, device=deviceDec)      
         t=time()                                
-        sms_phase_tensor = get_sms_phase(MB, N_y, N_x, N_Accel_PE-1, deviceDec) 
+        sms_phase_tensor = get_sms_phase(MB, N_y, N_x, N_Accel_PE, deviceDec) 
         print(sms_phase_tensor.shape)
         print('\n\n>> SMS phase recon time', -t+time())                       
         mask = get_us_mask(kdat_tensor, deviceDec)
@@ -779,7 +780,7 @@ def main():
         # Calculate yshift of MB acquisition
         yshift = []
         for b in range(MB):
-            yshift.append(b / N_Accel_PE-1)
+            yshift.append(b / N_Accel_PE)
 
     #
     # Muse recon
@@ -787,6 +788,7 @@ def main():
         if muse_recon:
             # kdat_prep = kdat_prep.detach().numpy()
             print('>> Muse reconstruction')
+            create_directory(save_dir + 'MUSE')
             museFile = h5py.File(save_dir + 'MUSE/MuseRecon_slice_' + slice_str + '.h5', 'w')
             ts=time()         
 
@@ -813,6 +815,7 @@ def main():
     #
         if shot_recon:
             print('>> shot_recon')
+            create_directory(save_dir + 'shot_phases')
             shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'w')
             ts=time()        
 
@@ -836,7 +839,7 @@ def main():
     # LAtent Space dEcoded Reconstruction (LASER)
     #
         if LASER:
-
+            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
             decFile = h5py.File(save_dir + 'LASER/DecRecon_slice_' + slice_str + '.h5', 'w')
 
             print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
@@ -953,6 +956,7 @@ def main():
         if vae_reg_recon:
             t=time()
             print('>> VAE as regularizer')
+            create_directory(save_dir + 'regularizer/')
             lamdas = [0.5]
             print(N_diff)
             for lam in lamdas:
@@ -1001,6 +1005,7 @@ def main():
     # VAE as denoiser
     #
         if vae_denoise:
+            create_directory(save_dir + 'denoiser/')
             VAEdenoiserFile = h5py.File(save_dir + 'denoiser/VAEDenoiserRecon.h5', 'w')
             print('>> VAE as denoiser')
             dwiData = np.squeeze(dwi_muse)

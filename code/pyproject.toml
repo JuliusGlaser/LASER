@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "LASER"
+version = "1.0.0"
+dependencies  = [
+    "numpy",
+    "dipy",
+    "torch",
+    "torchvision",
+    "PyYAML",
+    "scipy",
+    "h5py",
+    "packaging",
+    "tqdm",
+    "trx-python",
+    "pywavelets",
+    "numba",
+]
+[tool.setuptools]
+packages = ["laser.utility", "laser.training", "laser.denoising", "laser.reconstruction"]

@@ -171,9 +171,8 @@ def test(network_parameters: NP,
                 loss_lossf = loss_function(recon_t, clean_t)
                 KLD = ae.loss_function_kld(mu, logvar)
 
-                kld_loss += (network_parameters.kld_weight*KLD).item()
                 recon_loss += loss_lossf.item()
-                loss = loss_lossf + network_parameters.kld_weight*KLD
+                loss = loss_lossf + KLD
 
 
             loss_mse = ae.loss_function_mse(recon_t, clean_t)
@@ -237,7 +236,7 @@ def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array]:
 
     # load sequence info here, which stores bvals and gradient vectors
     # if different than usual data is used, please adapt here
-    f = h5py.File(NetworkParameters['dvs_file_path'], 'r')
+    f = h5py.File(NetworkParameters.dvs_file_path, 'r')
 
     bvals = f['bvals'][:]
     bvecs = f['bvecs'][:]
@@ -398,8 +397,6 @@ def main():
         if epoch == NetworkParameters.epochs or epoch % NetworkParameters.test_epoch_step == 0:
             # testing
             Losses = test(NetworkParameters, loader_test, optimizer, model, device, loss_function, epoch, f, Losses)
-        if NetworkParameters.model == 'VAE':
-            NetworkParameters.update_kld_weight(epoch)
 
     # create file, where all kind of losses during training and testing are stored
     Losses.create_loss_file(NetworkParameters)
