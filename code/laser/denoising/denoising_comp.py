@@ -35,25 +35,28 @@ def add_noise(x_clean, scale, noiseType = 'gaussian'):
 
     return x_noisy
 
+stream = open('config.yaml', 'r')
+config = yaml.load(stream, Loader)
 
 #define variables of dataset to denoise
-N_x = 200                                                     # X samples
-N_y = 200                                                     # Y samples
-N_z = 114                                                     # slices of data (of file or complete combined data)
-N_q = 126                                                     # diffusion encodings of data
-b0_threshold = 50                                             # b0 threshold
-device = 'cpu'                                                # device to run denoising on
-BAS_dir = r'../training/trained_data/BAS/'                    # path to directory of VAE BAS model checkpoint
-DTI_dir = r'../training/trained_data/DTI/'                    # path to directory of VAE DTI model checkpoint
-dvs_file_path = r'../../../data/raw/1.0mm_126-dir_R3x3_dvs.h5' # path to dvs file
-Dictionary_sphere_samples = 60                  # Samples from unit sphere for dictionary data (meaning depends on diffusion model)
+N_x = config['N_x']                                                     # X samples
+N_y = config['N_y']                                                     # Y samples
+N_z = config['N_z']                                                     # slices of data (of file or complete combined data)
+N_q = config['N_q']                                                     # diffusion encodings of data
+b0_threshold = config['b0_threshold']                                   # b0 threshold
+device = config['device']                                               # device to run denoising on
+BAS_dir = config['BAS_dir']                                             # path to directory of VAE BAS model checkpoint
+DTI_dir = config['DTI_dir']                                             # path to directory of VAE DTI model checkpoint
+dvs_file_path = config['dvs_file_path']                                 # path to dvs file
+muse_data_path = config['muse_data_path']                               # path to MUSE data
+Dictionary_sphere_samples = config['Dictionary_sphere_samples']         # Samples from unit sphere for dictionary data (meaning depends on diffusion model)
 
-NR = 1                                          # Noise distributions to be added to simulated dictionary (0 or 1 leads to no noise)
+NR = config['NR']                                                       # Noise distributions to be added to simulated dictionary (0 or 1 leads to no noise)
 
 
 #load muse reconstructed data (can be combined or just one slice)
 
-f = h5py.File(r'../../../data/MUSE/MuseRecon_combined_slices.h5','r')
+f = h5py.File(muse_data_path,'r')
 muse_dwi = f['DWI'][:]
 muse_dwi = np.squeeze(muse_dwi)
 f.close()

@@ -1,10 +1,8 @@
-import argparse
 import h5py
 import os
-import nibabel as nib
 import numpy as np
 import sigpy as sp
-from sigpy.mri import retro, app, sms, muse, mussels
+from sigpy.mri import sms
 from os.path import exists
 from pathlib import Path
 import numpy as np
@@ -16,12 +14,13 @@ name = 'DecRecon'
 dvs_file_path = '/home/hpc/mfqb/mfqb102h/tech_note_vae_diffusion/latrec/raw-data/data-126-dir/1.0mm_126-dir_R3x3_dvs.h5'
 raw_file_path = '/home/woody/mfqb/mfqb102h/raw/1.0mm_3-shell_R3x3_kdat_slice_032.h5'
 N_latent = 11
-run_combine = True
+N_diff, N_coils, N_x, N_y = (126, 32, 200, 200)
+run_combine_DWI = True
+run_combine_latent = True
 run_fit = True
 
 # raw slice to get sequence parameters
 f  = h5py.File(raw_file_path, 'r')  
-kdat = f['kdat'][:]
 MB = f['MB'][()]
 accel_factor = f['Accel_PE'][()]
 N_slices = f['Slices'][()]
@@ -29,11 +28,7 @@ N_segments = f['Segments'][()]
 f.close()
 maxInd = int(N_slices/MB)
 
-kdat = np.squeeze(kdat)  # 4 dim
-kdat = np.swapaxes(kdat, -2, -3)
-N_diff, N_coils, N_x, N_y = kdat.shape
-
-if run_combine:
+if run_combine_DWI:
     slice_loop = range(0, maxInd, 1)
     recons_all_slices_dwi = np.zeros((N_diff, N_slices, N_x,N_y), dtype=np.complex_)
     for s in slice_loop:
@@ -48,6 +43,24 @@ if run_combine:
             recons_all_slices_dwi[:,n_slice,:,:] = dwi_data[:,i,:,:]
     f = h5py.File(reco_data_path +  name + '_combined_slices.h5', 'w')
     f.create_dataset(name='DWI', data=recons_all_slices_dwi)
+    f.close()
+
+if run_combine_latent:
+    recons_all_slices_dwi = np.zeros((N_latent, N_slices, N_x,N_y), dtype=np.float64)
+    slice_loop = range(0, maxInd, 1)
+    for s in slice_loop:
+        slice_str = str(s).zfill(3)
+        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '.h5', 'r')
+        dwi_data = f['DWI_latent'][:].squeeze()
+        f.close()
+        print(dwi_data.shape)
+        slice_mb_idx = sms.map_acquire_to_ordered_slice_idx(s, N_slices, MB)
+        for i in range(MB):
+            n_slice = slice_mb_idx[i]
+
+            recons_all_slices_dwi[:,n_slice,:,:] = dwi_data[:,i,:,:]
+    f = h5py.File(reco_data_path +  name + '_combined_latent_slices.h5', 'w')
+    f.create_dataset(name='DWI_latent', data=recons_all_slices_dwi)
     f.close()
 
 if run_fit:
@@ -109,4 +122,3 @@ if run_fit:
     f.create_dataset('fa', data=FA)
     f.create_dataset('cfa', data=RGB)
     f.close()
-
