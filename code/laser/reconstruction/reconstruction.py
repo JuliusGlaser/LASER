@@ -24,7 +24,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import time 
 
 from laser.training.models.nn import autoencoder as ae
 
@@ -680,8 +679,8 @@ def main():
     print('>> LASER devide:', deviceDec)
 
     if muse_recon or shot_recon:
-        device = sp.Device(0)
-        xp = device.xp
+        device = sp.Device(-1)               # 0  for gpu, -1 for cpu
+        # xp = device.xp
         print('>> Muse devide:', device)
 
     slice_str = '000'

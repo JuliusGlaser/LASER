@@ -1,8 +1,13 @@
 import argparse
 import os
+import platform
+
+os_name = platform.system()
 
 CURR_DIR = os.getcwd()
 DATA_DIR = DIR = os.path.dirname(os.path.realpath(__file__))
+print(CURR_DIR)
+print(DATA_DIR)
 
 # %%
 files_list = ['1.0mm_126-dir_R3x3_coils.h5',
@@ -72,12 +77,18 @@ for f in files_list:
     if os.path.exists(DATA_DIR + '/' + f):
         print(f'The file {f} exists.')
     else:
-        os.system('wget -P ' + DATA_DIR + ' -q https://zenodo.org/records/13171692/files/' + f)
+        if os_name == 'Linux':
+            os.system('wget -P ' + DATA_DIR + ' -q https://zenodo.org/records/13171692/files/' + f)
+        elif os_name == 'Windows':
+            url = 'https://zenodo.org/records/13171692/files/' + f
+            os.system(f'powershell -Command "Invoke-WebRequest -Uri {url} -OutFile {DATA_DIR}{os.sep}{f}"')
+
 
 # check
-os.chdir(DATA_DIR)
+if os_name == 'Linux':
+    os.chdir(DATA_DIR)
 
-for f in files_list:
-    os.system('cat md5sum.txt | grep ' + f + ' | md5sum -c --ignore-missing')
+    for f in files_list:
+        os.system('cat md5sum.txt | grep ' + f + ' | md5sum -c --ignore-missing')
 
-os.chdir(CURR_DIR)
+    os.chdir(CURR_DIR)

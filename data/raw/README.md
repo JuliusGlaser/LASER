@@ -1,2 +1,1 @@
-# LASER
-A deep nonlinear subspace modeling and reconstruction for diffusion-weighted imaging using variational auto-encoder: LAtent Space dEcoded Reconstruction
+Necessary are the dvs file and one k-space slice

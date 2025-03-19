@@ -7,10 +7,9 @@ name = "LASER"
 version = "1.0.0"
 dependencies = [
     "numpy",
-    "pandas",
     "dipy",
     "sigpy",
     "torch",
-    "cupy",
+    "PyYAML"
     
 ]
