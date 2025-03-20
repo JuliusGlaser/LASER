@@ -15,7 +15,8 @@ This repository implements:
 
 - plotting of all figures used in the corresponding paper
 
-## Installation (using 'conda')
+<details>
+  <summary> <span style="font-size: 25px; font-weight: bold;">Installation (using conda)</span></summary>
 
 1. create a new conda environment named ('laser', you can use other names as you like) for python 3.9 (or higher):
 
@@ -52,8 +53,10 @@ This repository implements:
     ```bash
     pip install cupy
     ```
+</details>
 
-## Features
+<details>
+  <summary> <span style="font-size: 25px; font-weight: bold;">Features</span></summary>
 
 The repo implements the following reconstructions:
 
@@ -75,21 +78,25 @@ And auto-encoder models:
 1. Denoising auto-encoder (DAE, DOI: [10.1126/science.1127647](10.1126/science.1127647))
 
 2. Variational auto-encoder (VAE, DOI: [https://doi.org/10.48550/arXiv.1312.6114](https://doi.org/10.48550/arXiv.1312.6114))
+</details>
 
-## Data
+<details>
+  <summary> <span style="font-size: 25px; font-weight: bold;">Data</span></summary>
 
 The data used for the experiments has the following characteristics and needs to be downloaded before running reconstructions:
 
 | Spatial Resolution (mm<sup>3</sup>) | Diffusion Mode | Acceleration (in-plane x slice) | Shots | Link |
 |---|---|---|---|---|
 | 1.00 | MDDW 3-shell (20, 30, 64 directions) with b-value of 1000, 2000, 3000 s/mm<sup>2</sup> | 3 x 3 | 2 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13171692.svg)](https://doi.org/10.5281/zenodo.13171692)|
+</details>
 
-## Examples
+<details>
+  <summary> <span style="font-size: 25px; font-weight: bold;">Examples</span></summary>
 
-### Recreating publication results (for linux)
+### Recreating publication results
 
 We assume being in the LASER directory and conda environment `laser` is activated and  
-we only use CPU for training and reconstruction.
+we only use CPU for training and reconstruction on a linux system.
 1. load the data
     First we load examplatory data, besides figure 5 we don't need to reconstruct all data,  
     so we will only load one k-space slice, coil sensitivities and the dvs file.
@@ -201,6 +208,7 @@ You have recreated all experiments of the publication, congratulations!
 ### Further examples
 
 Explore the directories as you please and find further explanations.
+</details>
 
 ## References
 
