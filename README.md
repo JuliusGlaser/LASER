@@ -5,15 +5,15 @@
 
 This repository implements:
 
-    - creation of diffusion signal dictionaries 
-      using the diffusion tensor model as well as the ball-and-stick model
+- creation of diffusion signal dictionaries 
+    using the diffusion tensor model as well as the ball-and-stick model
 
-    - training scheme for variational auto-encoder (VAE) 
-      using the diffusion signal dictionaries
+- training scheme for variational auto-encoder (VAE) 
+    using the diffusion signal dictionaries
 
-    - reconstruction using the decoder of the trained VAE
+- reconstruction using the decoder of the trained VAE
 
-    - plotting of all figures used in the corresponding paper
+- plotting of all figures used in the corresponding paper
 
 ## Installation (using 'conda')
 
