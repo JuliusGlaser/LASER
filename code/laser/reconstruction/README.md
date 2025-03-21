@@ -35,9 +35,7 @@ With meaning as:
 
 For $b_0^{**}$ the calculation is first:
 
-```math
-\mathbf{b_0}^* = \underset{\mathbf{b_0}}{\operatorname{argmin}} \ ||y(b=0)-A\mathbf{b_0}||_2^2
-```
+ ![Equation](https://latex.codecogs.com/png.latex?%5Cmathbf%7Bb_0%7D%5E*%20%3D%20%5Cunderset%7B%5Cmathbf%7Bb_0%7D%7D%7B%5Coperatorname%7Bargmin%7D%7D%20%5C%7C%5C%7Cy(b%3D0)-A%5Cmathbf%7Bb_0%7D%5C%7C%5C%7C_2%5E2)
 
 
 with
@@ -46,12 +44,13 @@ with
 
 And further calculation of $b_0^{**}$ because $b_0^{*}$ shows artifacts in regions of high phase:
 
-$b_0^{**} =
+$ 
+b_0^{**} =
 \begin{cases}
    \text{avg(}\mathbf{b_0}^* \text{)} & \text{if ang(} b_0^*  \text{)} \geq 50\text{°}, \\
   b_0^* & \text{otherwise.}
-\end{cases}$
-$Try this_0$
+\end{cases} 
+$
 </details>
 
 To run the reconstructions, you need to adapt the config files  
