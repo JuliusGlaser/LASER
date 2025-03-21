@@ -35,7 +35,9 @@ With meaning as:
 
 For $b_0^{**}$ the calculation is first:
 
+<p align="center">
  ![Equation](https://latex.codecogs.com/svg.image?\mathbf{b_0}^*=\underset{\mathbf{b_0}}{\operatorname{argmin}}\left\|y(b=0)-A\mathbf{b_0}\right\|_2^2)
+ </p>
 
 
 with
@@ -44,7 +46,9 @@ with
 
 And further calculation of $b_0^{**}$ because $b_0^{*}$ shows artifacts in regions of high phase:
 
- ![Equation](https://latex.codecogs.com/svg.image?b_0^{**}=\begin{cases}\text{avg(}\mathbf{b_0}^*\text{)}&\text{if&space;ang(}b_0^*\text{)}\geq&space;50\text{},\\b_0^*&\text{otherwise.}\end{cases})
+<p align="center">
+  <img src="https://latex.codecogs.com/svg.image?\displaystyle b_0^{**}=%5Cbegin%7Bcases%7D%5Ctext%7Bavg(%7D%5Cmathbf%7Bb_0%7D^*%5Ctext%7B)%7D%26%5Ctext%7Bif%20ang(%7D%7Bb_0%7D^*%5Ctext%7B)%7D%5Cgeq%2050%5Ctext%7B,%7D%5C%5C%20%7Bb_0%7D^*%26%5Ctext%7Botherwise.%7D%5Cend%7Bcases%7D" />
+</p>
 
 </details>
 
