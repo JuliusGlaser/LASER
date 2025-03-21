@@ -36,7 +36,7 @@ With meaning as:
 For $b_0^{**}$ the calculation is first:
 
 <p align="center">
- ![Equation](https://latex.codecogs.com/svg.image?\mathbf{b_0}^*=\underset{\mathbf{b_0}}{\operatorname{argmin}}\left\|y(b=0)-A\mathbf{b_0}\right\|_2^2)
+ <img src="https://latex.codecogs.com/svg.image?\mathbf{b_0}^*=\underset{\mathbf{b_0}}{\operatorname{argmin}}\left\|y(b=0)-A\mathbf{b_0}\right\|_2^2)" />
  </p>
 
 
