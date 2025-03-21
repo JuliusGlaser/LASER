@@ -35,9 +35,9 @@ With meaning as:
 
 For $b_0^{**}$ the calculation is first:
 
-$$
+```math
 \mathbf{b_0}^* = \underset{\mathbf{b_0}}{\operatorname{argmin}} \ ||y(b=0)-A\mathbf{b_0}||_2^2
-$$
+```
 
 
 with
