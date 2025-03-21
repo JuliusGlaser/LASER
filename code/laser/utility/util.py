@@ -3,6 +3,7 @@ This module implements utility functions
 
 Author:
     Zhengguo Tan <zhengguo.tan@gmail.com>
+    Julius Glaser <julius-glaser@gmx.de>
 """
 
 import torch
@@ -139,3 +140,32 @@ def create_directory(path: str)->bool:
     else:
         print(f"Directory already exists at: {path}")
         return False
+    
+def plot_unit_sphere_samples(points):
+    # Extract x, y, and z coordinates for plotting
+    x_points, y_points, z_points = zip(*points)
+
+    # Create a 3D plot for the unit sphere
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Plot the sphere surface
+    u = np.linspace(0, 2 * np.pi, 100)
+    v = np.linspace(0, np.pi, 50)
+    x = np.outer(np.cos(u), np.sin(v))
+    y = np.outer(np.sin(u), np.sin(v))
+    z = np.outer(np.ones(np.size(u)), np.cos(v))
+    ax.plot_surface(x, y, z, color='lightblue', alpha=0.3)
+
+    # Plot each point on the unit sphere
+    ax.scatter(x_points, y_points, z_points, color='red', s=50, label='Samples')
+
+    # Label axes and set the aspect ratio to be equal
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.set_box_aspect([1,1,1])
+
+    # Show the plot
+    plt.legend()
+    plt.show()

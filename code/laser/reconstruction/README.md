@@ -41,7 +41,7 @@ For $b_0^{**}$ the calculation is first:
 
 
 with
-* $\mathbf{b_0}$ is a vector containing all 12 $b_0$ images of the acquisition
+* **b**<sub>0</sub> is a vector containing all 12 $b_0$ images of the acquisition
 * $A$ being the MUSE forward operator $PΘFSΔ$
 
 And further calculation of $b_0^{**}$ because $b_0^{*}$ shows artifacts in regions of high phase:

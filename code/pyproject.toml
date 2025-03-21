@@ -18,6 +18,9 @@ dependencies  = [
     "trx-python",
     "pywavelets",
     "numba",
+    "ipykernel",
+    "matplotlib",
+    "ipywidgets",
 ]
 [tool.setuptools]
 packages = ["laser.utility", "laser.training", "laser.denoising", "laser.reconstruction"]

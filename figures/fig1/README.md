@@ -19,3 +19,6 @@ and the diffusivity _d_.
 here the mean squared error. To this loss the Kullbeck-Leibler divergence of the latent distributions of the network is calculated.
 
 5. Backpropagation and repeat starting at 3
+
+Examples for the diffusion signal models and generation of the dictionary  
+as well as the noisy and denoised signals can be found in the `examples.ipynb`

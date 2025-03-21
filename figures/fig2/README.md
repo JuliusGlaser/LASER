@@ -27,3 +27,5 @@ With meaning as:
 
 Reconstruction is done by initializing $x$ with zeros and minimizing the difference between the sampled k-space data $y$ and $x$ after applying the forward operator.
 The operations of decoding and $b_0^{**}$ are applied in a voxel-wise fashion along contrast dimension, while the remaining operations are applied in a image-wise manner.
+
+Examples for the reconstruction can be found in the `examples.ipynb`
