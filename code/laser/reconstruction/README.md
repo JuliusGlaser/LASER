@@ -35,7 +35,11 @@ With meaning as:
 
 For $b_0^{**}$ the calculation is first:
 
-$\mathbf{b_0}^* = \underset{\mathbf{b_0}}{\operatorname{argmin}}\ ||y(b=0)-A\mathbf{b_0}||_2^2$
+\[
+\mathbf{b_0}^* = \underset{\mathbf{b_0}}{\operatorname{argmin}} \ ||y(b=0)-A\mathbf{b_0}||_2^2
+\]
+
+
 with
 * $\mathbf{b_0}$ is a vector containing all 12 $b_0$ images of the acquisition
 * $A$ being the MUSE forward operator $PΘFSΔ$
