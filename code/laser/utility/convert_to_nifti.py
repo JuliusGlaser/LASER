@@ -8,13 +8,13 @@ from os.path import exists
 import numpy as np
 
 #convert to h5 file to nifti
-data_path = r'../../../data/LASER/' #path to data which shall be converted
+data_path = r'../../../data/LASER' #path to data which shall be converted
 name = 'denoised_muse_VAE_BAS'
 expected_shape = (200,200,114,126) # N_x, N_y, N_slices, N_diffusion_encodings
 data_key = 'DWI'
 
 
-f = h5py.File(data_path + name + '.h5', 'r')
+f = h5py.File(data_path + os.sep + name + '.h5', 'r')
 DWI = f[data_key][:]
 f.close()
 print('DWI shape: ', DWI.shape)
@@ -36,7 +36,7 @@ DWI_abs.astype(np.int16)
 DWI_phs = np.angle(DWI)
 
 img_abs = nib.Nifti1Image(DWI_abs, affine=np.eye(DWI.ndim))
-nib.save(img_abs, data_path + name + '_abs.nii.gz')
+nib.save(img_abs, data_path + os.sep + name + '_abs.nii.gz')
 
 img_phs = nib.Nifti1Image(DWI_phs, affine=np.eye(DWI.ndim))
-nib.save(img_phs, data_path + name + '_phs.nii')
+nib.save(img_phs, data_path + os.sep + name + '_phs.nii')
