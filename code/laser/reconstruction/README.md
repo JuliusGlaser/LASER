@@ -35,22 +35,19 @@ With meaning as:
 
 For $b_0^{**}$ the calculation is first:
 
-$ 
-\mathbf{b_0}^* = \underset{\mathbf{b_0}}{\operatorname{argmin}}\ ||y(b=0)-A\mathbf{b_0}||_2^2 
-$
+$\mathbf{b_0}^* = \underset{\mathbf{b_0}}{\operatorname{argmin}}\ ||y(b=0)-A\mathbf{b_0}||_2^2$
 with
 * $\mathbf{b_0}$ is a vector containing all 12 $b_0$ images of the acquisition
 * $A$ being the MUSE forward operator $PΘFSΔ$
 
 And further calculation of $b_0^{**}$ because $b_0^{*}$ shows artifacts in regions of high phase:
 
-$ 
-b_0^{**} =
+$b_0^{**} =
 \begin{cases}
    \text{avg(}\mathbf{b_0}^* \text{)} & \text{if ang(} b_0^*  \text{)} \geq 50\text{°}, \\
   b_0^* & \text{otherwise.}
-\end{cases} 
-$
+\end{cases}$
+$Try this_0$
 </details>
 
 To run the reconstructions, you need to adapt the config files  
