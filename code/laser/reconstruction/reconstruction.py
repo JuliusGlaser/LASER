@@ -715,7 +715,7 @@ def main():
         # correct data shape
         kdat = np.squeeze(kdat)  # 4 dim
         kdat = np.swapaxes(kdat, -2, -3)
-        N_diff, N_coils, N_y, N_x = kdat.shape
+        N_diff, N_coils, N_x, N_y = kdat.shape
 
         # split kdat into shots
         N_diff = kdat.shape[-4]
