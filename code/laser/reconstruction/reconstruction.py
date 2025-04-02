@@ -107,7 +107,7 @@ def add_noise(x_clean, scale, noiseType = 'gaussian'):
 
     return x_noisy
 
-def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torch.Tensor, x_1:torch.Tensor)-> torch.Tensor:
+def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torch.Tensor, phase:torch.Tensor, x_1:torch.Tensor)-> torch.Tensor:
     '''
     Takes an input data through the decoder trained for compressing signal evolution
     Args:
@@ -127,8 +127,16 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Z = number of acquired slices
     Q = number of diffusion directions
     '''
+    N_b0 = b0.shape[-1]
     out = model.decode(x_1)
-    out = (out*torch.real(b0) + 1j*torch.imag(b0)*out).reshape(N_z,N_y, N_x,Q)
+    # out_padded = torch.nn.functional.pad(out, (0,Q%N_b0), mode="constant", value=0)
+    # ext_dim = out_padded.shape[-1]
+    # out_padded = torch.reshape(out_padded, (N_z*N_y*N_x, N_b0, ext_dim//N_b0))
+    # b0 = torch.reshape(b0, (N_z*N_y*N_x, N_b0,1))
+    # magnitude_padded = out_padded*b0
+    # magnitude_deshaped = torch.reshape(magnitude_padded, (N_z*N_y*N_x, ext_dim))
+    magnitude = out*abs(b0[:,0:1])
+    out = (magnitude*torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
 
@@ -849,11 +857,12 @@ def main():
             b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
             b0.requires_grad  = True
 
-            optimizer   = optim.SGD([b0],lr = 1e-1)
+            optimizer   = optim.SGD([b0],lr = 5e-1)
+            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)
 
             criterion   = nn.MSELoss(reduction='sum')
 
-            iterations  = 90
+            iterations  = 150
 
             for iter in range(iterations):
                 optimizer.zero_grad()
@@ -868,21 +877,51 @@ def main():
 
                 loss.backward()
                 optimizer.step()
-
+                scheduler.step()
                 running_loss = loss.item()
 
                 if iter % 10 == 0:
                     print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
-            b0 = torch.squeeze(b0).detach()
+            b0 = torch.squeeze(b0)
+            decFile.create_dataset('b0', data=np.array(b0.detach().cpu().numpy()))
+            b0_avg = b0.clone().detach()
+            b0_avg = torch.mean(b0_avg, dim=0)
+            decFile.create_dataset('b0_avg', data=np.array(b0_avg.detach().cpu().numpy()))
+            high_angle_entries = abs(torch.angle(b0[0,...])*180/torch.pi) > 50
+            b0_combined = b0[0,...].clone().detach()
+            b0_combined[high_angle_entries] = b0_avg[high_angle_entries]
+            decFile.create_dataset('b0_combined', data=np.array(b0_combined.detach().cpu().numpy()))
+            b0_combined.permute(2,1,0).detach()
+            b0_combined = torch.reshape(b0_combined, (N_x*N_y*MB,1)).detach()
             b0 = torch.reshape(b0, (N_b0, MB*N_y*N_x))
-            b0 = torch.permute(b0, (-1,0))
+            b0 = torch.permute(b0, (-1,0)).detach()
 
             t=time()
             # define latent image tensor
             x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
+            dist = 0
+            count = False
+            for i in range(b0_mask.shape[0]):
+                
+                if b0_mask[i] == 0 and count == False:
+                    count = True
+                elif b0_mask[i] == 0 and count == True:
+                    break
+                if count == True:
+                    dist = dist+1
+
+            print(dist)
+            shape = (MB*N_x*N_y, N_diff)
+            phase = torch.zeros(shape, dtype=torch.float)
+            phase = torch.angle(b0[:,0:1]).repeat_interleave(N_diff, dim=-1)
+            phase = phase.to(deviceDec)
+            print(phase.shape)
+            
+            phase.requires_grad = True
+
             x_1.requires_grad  = True
             
-            optimizer   = optim.Adam([x_1],lr = 1e-1)
+            optimizer   = optim.Adam([x_1, phase],lr = 1e-1)
 
             criterion   = nn.MSELoss(reduction='sum')
 
@@ -896,7 +935,7 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)             
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
                     x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
@@ -905,7 +944,7 @@ def main():
                     loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
 
                 if reg_weight > 0:
-                    loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent)
+                    loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) + reg_weight * tv_loss(phase, MB, N_x, N_y, N_diff)
                     if iter > 1:
                         loss += loss_of_tv
                 loss.backward()
@@ -925,7 +964,7 @@ def main():
             lat_img = np.reshape(lat_img, (MB, N_x, N_y, N_latent))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)
+            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
             decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))                    
             decFile.close()
 
