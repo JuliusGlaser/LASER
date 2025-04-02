@@ -833,71 +833,22 @@ def main():
     # LAtent Space dEcoded Reconstruction (LASER)
     #
         if LASER:
-            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+'/DecRecon_slice_' + slice_str + '.h5', 'w')
+            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']) + '_joint')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '_joint'+'/DecRecon_slice_' + slice_str + '.h5', 'w')
 
             print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
             shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
             shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
-            shotFile.close()
-
-            # Reconstruction of b0**
-            print('>> Reconstruction of b0**')
-            t=time()
-
-            N_b0 = sum(b0_mask==0)
-            b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
-            b0.requires_grad  = True
-
-            optimizer   = optim.SGD([b0],lr = 1e-1)
-
-            criterion   = nn.MSELoss(reduction='sum')
-
-            iterations  = 90
-
-            for iter in range(iterations):
-                optimizer.zero_grad()
-                
-                x_multi_shot = Multi_shot_for(b0, shot_phase_tensor[b0_mask==0,...])
-                x_coil_split = coil_for(x_multi_shot, coil_tensor[0,...])
-                x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
-                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[...])
-                x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
-
-                loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
-
-                loss.backward()
-                optimizer.step()
-
-                running_loss = loss.item()
-
-                if iter % 10 == 0:
-                    print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
-
-            b0 = torch.squeeze(b0)
-            decFile.create_dataset('b0', data=np.array(b0.detach().cpu().numpy()))
-            b0_avg = b0.clone().detach()
-            b0_avg = torch.mean(b0_avg, dim=0)
-            decFile.create_dataset('b0_avg', data=np.array(b0_avg.detach().cpu().numpy()))
-            high_angle_entries = abs(torch.angle(b0[0,...])*180/torch.pi) > 50
-            b0_combined = b0[0,...].clone().detach()
-            b0_combined[high_angle_entries] = b0_avg[high_angle_entries]
-            decFile.create_dataset('b0_combined', data=np.array(b0_combined.detach().cpu().numpy()))
-            b0_combined.permute(2,1,0).detach()
-            b0_combined = torch.reshape(b0_combined, (N_x*N_y*MB,1)).detach()
-            b0_avg.permute(2,1,0)
-            b0_avg = torch.reshape(b0_avg, (N_x*N_y*MB,1))
-            b0 = b0[0,...]
-            b0.permute(2,1,0).detach()
-            b0 = torch.reshape(b0, (N_x*N_y*MB,1))
-            print('>> b0 recon time: ', -t + time())            
+            shotFile.close()                 
 
             t=time()
             # define latent image tensor
             x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
+            b0  = torch.zeros(MB*N_x*N_y,1, dtype=torch.complex64).to(deviceDec)
             x_1.requires_grad  = True
+            b0.requires_grad  = True
             
-            optimizer   = optim.Adam([x_1],lr = 1e-1)
+            optimizer   = optim.Adam([x_1, b0],lr = 1e-1)
 
             criterion   = nn.MSELoss(reduction='sum')
 
@@ -911,7 +862,7 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)             
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)             
                     x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
@@ -940,7 +891,7 @@ def main():
             lat_img = np.reshape(lat_img, (MB, N_x, N_y, N_latent))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)
+            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)
             decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))                    
             decFile.close()
 
