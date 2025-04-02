@@ -873,24 +873,9 @@ def main():
 
                 if iter % 10 == 0:
                     print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
-
-            b0 = torch.squeeze(b0)
-            decFile.create_dataset('b0', data=np.array(b0.detach().cpu().numpy()))
-            b0_avg = b0.clone().detach()
-            b0_avg = torch.mean(b0_avg, dim=0)
-            decFile.create_dataset('b0_avg', data=np.array(b0_avg.detach().cpu().numpy()))
-            high_angle_entries = abs(torch.angle(b0[0,...])*180/torch.pi) > 50
-            b0_combined = b0[0,...].clone().detach()
-            b0_combined[high_angle_entries] = b0_avg[high_angle_entries]
-            decFile.create_dataset('b0_combined', data=np.array(b0_combined.detach().cpu().numpy()))
-            b0_combined.permute(2,1,0).detach()
-            b0_combined = torch.reshape(b0_combined, (N_x*N_y*MB,1)).detach()
-            b0_avg.permute(2,1,0)
-            b0_avg = torch.reshape(b0_avg, (N_x*N_y*MB,1))
-            b0 = b0[0,...]
-            b0.permute(2,1,0).detach()
-            b0 = torch.reshape(b0, (N_x*N_y*MB,1))
-            print('>> b0 recon time: ', -t + time())            
+            b0 = torch.squeeze(b0).detach()
+            b0 = torch.reshape(b0, (N_b0, MB*N_y*N_x))
+            b0 = torch.permute(b0, (-1,0))
 
             t=time()
             # define latent image tensor
