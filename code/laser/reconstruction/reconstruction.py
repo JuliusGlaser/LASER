@@ -778,6 +778,7 @@ def main():
 
         for param in model.parameters():
             param.requires_grad = False
+        model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
 
         # Calculate yshift of MB acquisition
         yshift = []
