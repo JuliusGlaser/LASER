@@ -107,7 +107,7 @@ def add_noise(x_clean, scale, noiseType = 'gaussian'):
 
     return x_noisy
 
-def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torch.Tensor, x_1:torch.Tensor)-> torch.Tensor:
+def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torch.Tensor, phase:torch.Tensor, x_1:torch.Tensor)-> torch.Tensor:
     '''
     Takes an input data through the decoder trained for compressing signal evolution
     Args:
@@ -128,7 +128,7 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Q = number of diffusion directions
     '''
     out = model.decode(x_1)
-    out = (out*torch.real(b0) + 1j*torch.imag(b0)*out).reshape(N_z,N_y, N_x,Q)
+    out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
 
@@ -840,15 +840,54 @@ def main():
             shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
             shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
             shotFile.close()                 
+            
+
+            N_b0 = sum(b0_mask==0)
+            b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
+            b0.requires_grad  = True
+
+            optimizer   = optim.SGD([b0],lr = 5e-1)
+            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)
+
+            criterion   = nn.MSELoss(reduction='sum')
+
+            iterations  = 150
+
+            for iter in range(iterations):
+                optimizer.zero_grad()
+                
+                x_multi_shot = Multi_shot_for(b0, shot_phase_tensor[b0_mask==0,...])
+                x_coil_split = coil_for(x_multi_shot, coil_tensor[0,...])
+                x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
+                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[...])
+                x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
+
+                loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
+
+                loss.backward()
+                optimizer.step()
+                scheduler.step()
+                running_loss = loss.item()
+
+                if iter % 10 == 0:
+                    print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
+            b0 = torch.squeeze(b0)
+            decFile.create_dataset('b0', data=np.array(b0.detach().cpu().numpy()))
+            b0 = torch.reshape(b0, (N_b0, MB*N_y*N_x))
+            b0 = torch.permute(b0, (-1,0)).detach()
 
             t=time()
             # define latent image tensor
             x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
-            b0  = torch.zeros(MB*N_x*N_y,1, dtype=torch.complex64).to(deviceDec)
+            # b0  = torch.ones(MB*N_x*N_y,1, dtype=torch.float32).to(deviceDec)*0.001
+            phase  = torch.zeros(MB*N_x*N_y,N_diff, dtype=torch.float32).to(deviceDec)*0.001
             x_1.requires_grad  = True
+            b0 = abs(b0[:,0:1]).to(deviceDec)
             b0.requires_grad  = True
+            phase.requires_grad = True
             
-            optimizer   = optim.Adam([x_1, b0],lr = 1e-1)
+            optimizer   = optim.Adam([x_1, phase],lr = 1e-1)
+            optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.1)
 
             criterion   = nn.MSELoss(reduction='sum')
 
@@ -862,7 +901,7 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)             
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
                     x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
@@ -871,11 +910,13 @@ def main():
                     loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
 
                 if reg_weight > 0:
-                    loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent)
+                    loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) + reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) + reg_weight/10 * tv_loss(phase, MB, N_x, N_y, N_diff) 
                     if iter > 1:
                         loss += loss_of_tv
                 loss.backward()
+                optimizer2.step()
                 optimizer.step()
+                # scheduler.step()
 
                 running_loss = loss.item()
                 if np.isnan(running_loss):
@@ -891,7 +932,7 @@ def main():
             lat_img = np.reshape(lat_img, (MB, N_x, N_y, N_latent))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)
+            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
             decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))                    
             decFile.close()
 
