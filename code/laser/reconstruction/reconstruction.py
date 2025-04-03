@@ -128,7 +128,7 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Q = number of diffusion directions
     '''
     out = model.decode(x_1)
-    out = (out*torch.real(b0) + 1j*torch.imag(b0)*out).reshape(N_z,N_y, N_x,Q)
+    out = (out*abs(b0)*torch.exp(1j*torch.angle(b0))).reshape(N_z,N_y, N_x,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
 
@@ -846,10 +846,10 @@ def main():
             t=time()
 
             N_b0 = sum(b0_mask==0)
-            b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
+            b0 = torch.ones(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)*0.0001
             b0.requires_grad  = True
 
-            optimizer   = optim.SGD([b0],lr = 1e-1)
+            optimizer   = optim.SGD([b0],lr = 5e-1, momentum=0.9)
 
             criterion   = nn.MSELoss(reduction='sum')
 
@@ -859,7 +859,7 @@ def main():
                 optimizer.zero_grad()
                 
                 x_multi_shot = Multi_shot_for(b0, shot_phase_tensor[b0_mask==0,...])
-                x_coil_split = coil_for(x_multi_shot, coil_tensor[0,...])
+                x_coil_split = coil_for(x_multi_shot, coil_tensor)
                 x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                 x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[...])
                 x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
@@ -911,7 +911,7 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)             
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)             
                     x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
@@ -940,7 +940,7 @@ def main():
             lat_img = np.reshape(lat_img, (MB, N_x, N_y, N_latent))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)
+            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)
             decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))                    
             decFile.close()
 
