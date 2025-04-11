@@ -1,13 +1,13 @@
-path_to_data: ../../data/
+path_to_data: ../../../data/
 dictionary:
-  muse: "MUSE/MuseRecon_combined_slices"
-  llr: "LLR/JETS2"
-  dec: "LASER/BAS/DecRecon_combined_slices"
-  DTI: "LASER/DTI/DecRecon_combined_slices"
-  denoised: denoised_muse/denoised_BAS
-N_x: &N_x 200
-N_y: &N_y 200
-N_z: &N_z 114
+  MUSE: "MUSE"
+  LLR: "JETS2"
+  denoised: "VAE_BAS_denoised"
+  LASER_DTI: "DecRecon_combined_slices"
+  LASER_BAS: "joint\\DecRecon_combined_slices"
+N_x: &N_x 220
+N_y: &N_y 223
+N_z: &N_z 42
 N_q: &N_q 126
 orientation_dict:
   standard: [*N_x, *N_y, *N_z, *N_q]
@@ -16,14 +16,14 @@ orientation_dict:
 areas_dict:
   # tn_crossing:
   #   orientation: "cor"
-  #   slice_ind: 108
-  #   matlab_area_TL: [88, 65] # y, x
-  #   matlab_area_DR: [71, 82]
+  #   slice_ind: 103
+  #   matlab_area_TL: [42, 91] # y, x
+  #   matlab_area_DR: [26, 112]
   fine_structure:
     orientation: 'tra'
-    slice_ind: 72
-    matlab_area_TL: [105, 57] # y, x
-    matlab_area_DR: [89, 73]
+    slice_ind: 30
+    matlab_area_TL: [117, 69] # y, x
+    matlab_area_DR: [97, 89]
 
 interactive: False
 sf_calc: False

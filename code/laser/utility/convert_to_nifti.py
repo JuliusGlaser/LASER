@@ -8,9 +8,9 @@ from os.path import exists
 import numpy as np
 
 #convert to h5 file to nifti
-data_path = r'../../../data/LASER' #path to data which shall be converted
-name = 'denoised_muse_VAE_BAS'
-expected_shape = (200,200,114,126) # N_x, N_y, N_slices, N_diffusion_encodings
+data_path = r'C:\local_laser_data\potporri\LLR' + os.sep #path to data which shall be converted
+name = 'JETS2'
+expected_shape = (220,223,42,126) # N_x, N_y, N_slices, N_diffusion_encodings
 data_key = 'DWI'
 
 

@@ -2,22 +2,22 @@
   # config for combine_and_fit.py
   # can run combination of all reconstructed DWI data, latent data for decoder recon and a fitting for the DWI data
 
-  run_combine_DWI: True                  # run combination for DWI
-  run_combine_latent: True               # run combination for latent images (only Decoder recon)
+  run_combine_DWI: False                  # run combination for DWI
+  run_combine_latent: False               # run combination for latent images (only Decoder recon)
   run_fit: True                          # run fit for DWI data (only possible if data has been combined first)
 
-  reco_data_path: '../../../data/LASER/' # path to directory where reconstructed data is stored
-  name: 'DecRecon'                       # shared name of all reconstructed slices
+  reco_data_path: '../../../data/LLR/' # path to directory where reconstructed data is stored
+  name: 'JETS'                       # shared name of all reconstructed slices
   N_diff: 126                            # number of diffusion encoding directions
   N_coils: 32                            # number of coils
-  N_x: 200                               # Number of X pixels
-  N_y: 200                               # Number of Y pixels
+  N_x: 220                               # Number of X pixels
+  N_y: 223                               # Number of Y pixels
   MB: 3                                  # Multiband factor
-  N_slices: 114                          # number of acquired slices
+  N_slices: 42                          # number of acquired slices
   N_segments: 2                          # number of segments
 
   
   N_latent: 11                           # number of latent variables of reconstruction (only necessary if run_fit is true)
 
 
-  dvs_file_path: '../../../data/raw/dvs.h5' # path to dvs file which stores b-values and gradient vectors of acquisition (only necessary if run_fit is true)
+  dvs_file_path: '../../../data/raw/1.0mm_126-dir_R3x3_dvs.h5' # path to dvs file which stores b-values and gradient vectors of acquisition (only necessary if run_fit is true)

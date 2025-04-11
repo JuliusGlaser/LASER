@@ -14,19 +14,19 @@ name = 'DecRecon'
 dvs_file_path = '/home/hpc/mfqb/mfqb102h/tech_note_vae_diffusion/latrec/raw-data/data-126-dir/1.0mm_126-dir_R3x3_dvs.h5'
 raw_file_path = '/home/woody/mfqb/mfqb102h/raw/1.0mm_3-shell_R3x3_kdat_slice_032.h5'
 N_latent = 11
-N_diff, N_coils, N_x, N_y = (126, 32, 200, 200)
-run_combine_DWI = True
-run_combine_latent = True
+N_diff, N_coils, N_y, N_x = (126, 32, 223, 220)
+run_combine_DWI = False
+run_combine_latent = False
 run_fit = True
 
 # raw slice to get sequence parameters
-f  = h5py.File(raw_file_path, 'r')  
-MB = f['MB'][()]
-accel_factor = f['Accel_PE'][()]
-N_slices = f['Slices'][()]
-N_segments = f['Segments'][()]    
-f.close()
-maxInd = int(N_slices/MB)
+# f  = h5py.File(raw_file_path, 'r')  
+# MB = f['MB'][()]
+# accel_factor = f['Accel_PE'][()]
+# N_slices = f['Slices'][()]
+# N_segments = f['Segments'][()]    
+# f.close()
+# maxInd = int(N_slices/MB)
 
 if run_combine_DWI:
     slice_loop = range(0, maxInd, 1)
@@ -64,13 +64,15 @@ if run_combine_latent:
     f.close()
 
 if run_fit:
-    f = h5py.File(reco_data_path +  name + '_combined_slices.h5', 'r')
-    f2 = h5py.File(dvs_file_path, 'r')
+    f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
+    dwi = f['DWI'][:]
+    f.close()
+    f2 = h5py.File(r'C:\Workspace\tech_note_vae_diffusion\latrec\raw-data\data-126-dir\1.0mm_126-dir_R3x3_dvs.h5', 'r')
     bvals = f2['bvals'][:]
     bvecs = f2['bvecs'][:]
     f2.close()
 
-    expected_shape = (200,200,114,126)
+    expected_shape = (220,223,42,126)
     # bvals = bvals.reshape(-1, 1)
     # B = epi.get_B(bvals, bvecs)
 
@@ -86,7 +88,7 @@ if run_fit:
     tenmodel = dti.TensorModel(gtab)
 
 
-    dwi = recons_all_slices_dwi
+    
 
     dwi = abs(np.squeeze(dwi)) * 1000   #scaling results in better fits
     print(dwi.shape)
@@ -96,7 +98,7 @@ if run_fit:
         if dwi.shape == expected_shape[::-1]:
             dwi = dwi.T
         assert dwi.shape == expected_shape
-    N_x, N_y, N_z, N_diff = dwi.shape
+    N_y, N_x, N_z, N_diff = dwi.shape
 
 
     b0 = np.mean(abs(dwi), axis=-1)
@@ -119,6 +121,8 @@ if run_fit:
     RGB = (RGB.T).T
     MD  = (MD.T).T
 
+    f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
     f.create_dataset('fa', data=FA)
     f.create_dataset('cfa', data=RGB)
+    # f.create_dataset('DWI', data=dwi/1000)
     f.close()
