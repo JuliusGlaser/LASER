@@ -21,6 +21,7 @@ dependencies  = [
     "ipykernel",
     "matplotlib",
     "ipywidgets",
+    "tensorboard",
 ]
 [tool.setuptools]
 packages = ["laser.utility", "laser.training", "laser.denoising", "laser.reconstruction"]

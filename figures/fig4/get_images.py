@@ -4,15 +4,15 @@ import h5py
 import matplotlib.pyplot as plt
 
 
-slice_idx = 61
+slice_idx = 29
 
 q_1000 = 2
 q_2000 = 40
 q_3000 = 57
 q_values = [q_1000, q_2000, q_3000]
-N_x = 200
-N_y = 200
-N_z = 114
+N_x = 220
+N_y = 223
+N_z = 42
 N_q = 126
 std_shape = (N_x,N_y,N_z,N_q)
 vmaxes = [] 
@@ -23,11 +23,11 @@ ratio = img_width/img_height
 plt_title = 'comparison_muse_llr_denoised_DTI_BAS'
 
 
-muse_path = r'../../data/MUSE/MuseRecon_combined_slices.h5'
+muse_path = r'../../data/MUSE/MUSE.h5'
 llr_path = r'../../data/LLR/JETS2.h5'
-denoised_path = r'../../data/denoised/denoised_muse.h5'
-DTI_path = r'../../data/LASER/DTI/DecRecon_combined_slices.h5'
-BAS_path = r'../../data/LASER/BAS/DecRecon_combined_slices.h5'
+denoised_path = r'../../data/denoised/VAE_BAS_denoised.h5'
+DTI_path = r'../../data/LASER/VAE_DTI_joint/DecRecon_combined_slices.h5'
+BAS_path = r'../../data/LASER/VAE_BAS_joint/DecRecon_combined_slices.h5'
 
 dict = {'MUSE':{'path':muse_path, 'row':0}, 'LLR':{'path':llr_path, 'row':1}, 'denoised':{'path':denoised_path, 'row':2},
          'DTI':{'path':DTI_path, 'row':3}, 'BAS':{'path':BAS_path, 'row':4}}
