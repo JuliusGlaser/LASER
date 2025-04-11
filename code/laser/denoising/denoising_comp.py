@@ -58,9 +58,10 @@ NR = config['NR']                                                       # Noise 
 
 f = h5py.File(muse_data_path,'r')
 muse_dwi = f['DWI'][:]
-muse_dwi = np.squeeze(muse_dwi)
+# muse_dwi = np.squeeze(muse_dwi)
 f.close()
 
+print(muse_dwi.shape)
 try:
     assert muse_dwi.shape == (N_q, N_z, N_y, N_x)
 except:
@@ -76,38 +77,6 @@ bvecs = f['bvecs'][:]
 f.close()
 print(bvals.dtype)
 b0_mask = bvals > b0_threshold
-
-#generate dictionary data using Diffusion Tensor or Ball-and-stick model
-
-DTI_x_clean, DTI_original_D = dwi.model_DTI(bvals, bvecs, b0_threshold,diff_samples=10, N_samples_first_evec=Dictionary_sphere_samples, N_samples_second_evec=int(Dictionary_sphere_samples*2/3))
-DTI_original_D = DTI_original_D.T
-DTI_x_clean = DTI_x_clean.T
-
-BAS_x_clean, BAS_original_D = dwi.model_BAS(bvals, bvecs, b0_threshold, N_samples=Dictionary_sphere_samples)
-BAS_original_D = BAS_original_D.T
-BAS_x_clean = BAS_x_clean.T
-
-DTI_full = DTI_x_clean
-BAS_full = BAS_x_clean
-
-for id in range(1, NR, 1):
-    DTI_copy = dc(DTI_x_clean)
-    BAS_copy = dc(BAS_x_clean)
-    # standard deviation of noise to be added, can be adjusted
-    sd = 0.01 + id * 0.03
-    print('noise = ', sd)
-
-
-    # add noise to the copies
-    BAS_copy = add_noise(BAS_copy, sd)
-    DTI_copy = add_noise(DTI_copy, sd)
-
-    # append noised versions to complete dataset
-    DTI_full = np.append(DTI_full, DTI_copy, axis=1)
-    BAS_full = np.append(BAS_full, BAS_copy, axis=1)
-
-print('>> number of signals for DTI training linsub: ',DTI_full.shape[1])
-print('>> number of signals for BAS training linsub: ',BAS_full.shape[1])
 
 
 #load VAE model BAS
@@ -125,6 +94,47 @@ model_BAS = model_BAS.float()
 for param in model_BAS.parameters():
     param.requires_grad = False
 
+#denoise muse data using VAE
+print(bvals.dtype)
+BAS_denoised, BAS_latent = denoising_using_ae(muse_dwi, (N_q, N_z, N_y, N_x), model_BAS, N_latent, 'VAE', device, bvals=bvals)
+BAS_denoised = BAS_denoised.T
+BAS_latent = BAS_latent.T
+
+print('>> BAS denoised shape: ', BAS_denoised.shape)
+
+#generate dictionary data using Diffusion Tensor or Ball-and-stick model
+
+# DTI_x_clean, DTI_original_D = dwi.model_DTI(bvals, bvecs, b0_threshold,diff_samples=10, N_samples_first_evec=Dictionary_sphere_samples, N_samples_second_evec=int(Dictionary_sphere_samples*2/3))
+# DTI_original_D = DTI_original_D.T
+# DTI_x_clean = DTI_x_clean.T
+
+# BAS_x_clean, BAS_original_D = dwi.model_BAS(bvals, bvecs, b0_threshold, N_samples=Dictionary_sphere_samples)
+# BAS_original_D = BAS_original_D.T
+# BAS_x_clean = BAS_x_clean.T
+
+# DTI_full = DTI_x_clean
+# BAS_full = BAS_x_clean
+
+# for id in range(1, NR, 1):
+#     DTI_copy = dc(DTI_x_clean)
+#     BAS_copy = dc(BAS_x_clean)
+#     # standard deviation of noise to be added, can be adjusted
+#     sd = 0.01 + id * 0.03
+#     print('noise = ', sd)
+
+
+#     # add noise to the copies
+#     BAS_copy = add_noise(BAS_copy, sd)
+#     DTI_copy = add_noise(DTI_copy, sd)
+
+#     # append noised versions to complete dataset
+#     DTI_full = np.append(DTI_full, DTI_copy, axis=1)
+#     BAS_full = np.append(BAS_full, BAS_copy, axis=1)
+
+# print('>> number of signals for DTI training linsub: ',DTI_full.shape[1])
+# print('>> number of signals for BAS training linsub: ',BAS_full.shape[1])
+
+
 #load VAE model DTI
 stream = open(DTI_dir + 'config.yaml', 'r')
 config = yaml.load(stream, Loader)
@@ -140,62 +150,56 @@ model_DTI = model_DTI.float()
 for param in model_DTI.parameters():
     param.requires_grad = False
 
-#train subspace model DTI
+# #train subspace model DTI
 
-DTI_full_tensor = torch.tensor(DTI_full).to(device).to(torch.float)
-print('>> DTI_full_tensor shape: ',DTI_full_tensor.shape)
-DTI_linsub_basis_tensor = linsub.learn_linear_subspace(DTI_full_tensor, num_coeffs=N_latent, use_error_bound=False)
-print('>> DTI_linsub_basis_tensor shape: ',DTI_linsub_basis_tensor.shape)
-print(DTI_linsub_basis_tensor.dtype)
+# DTI_full_tensor = torch.tensor(DTI_full).to(device).to(torch.float)
+# print('>> DTI_full_tensor shape: ',DTI_full_tensor.shape)
+# DTI_linsub_basis_tensor = linsub.learn_linear_subspace(DTI_full_tensor, num_coeffs=N_latent, use_error_bound=False)
+# print('>> DTI_linsub_basis_tensor shape: ',DTI_linsub_basis_tensor.shape)
+# print(DTI_linsub_basis_tensor.dtype)
 
-#denoise muse data using subspace
-dwi_scale = np.divide(muse_dwi, muse_dwi[0, ...],
-                        out=np.zeros_like(muse_dwi),
-                        where=muse_dwi!=0)
+# #denoise muse data using subspace
+# dwi_scale = np.divide(muse_dwi, muse_dwi[0, ...],
+#                         out=np.zeros_like(muse_dwi),
+#                         where=muse_dwi!=0)
 
-muse_dwi_torch = torch.tensor(dwi_scale, device=device, dtype=torch.float32)
-print(muse_dwi_torch.shape)
+# muse_dwi_torch = torch.tensor(dwi_scale, device=device, dtype=torch.float32)
+# print(muse_dwi_torch.shape)
 
-DTI_dwi_linsub_tensor = DTI_linsub_basis_tensor @ DTI_linsub_basis_tensor.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
+# DTI_dwi_linsub_tensor = DTI_linsub_basis_tensor @ DTI_linsub_basis_tensor.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
 
-DTI_dwi_linsub_tensor = DTI_dwi_linsub_tensor.view(muse_dwi_torch.shape)
+# DTI_dwi_linsub_tensor = DTI_dwi_linsub_tensor.view(muse_dwi_torch.shape)
 
-DTI_dwi_linsub = DTI_dwi_linsub_tensor.detach().cpu().numpy()
-DTI_linsub_denoised = DTI_dwi_linsub * muse_dwi[0]
-DTI_linsub_denoised = DTI_linsub_denoised.T
+# DTI_dwi_linsub = DTI_dwi_linsub_tensor.detach().cpu().numpy()
+# DTI_linsub_denoised = DTI_dwi_linsub * muse_dwi[0]
+# DTI_linsub_denoised = DTI_linsub_denoised.T
 
-print('>> DTI_linsub denoised shape: ', DTI_linsub_denoised.shape)
+# print('>> DTI_linsub denoised shape: ', DTI_linsub_denoised.shape)
 
 
-#train subspace model BAS
+# #train subspace model BAS
 
-BAS_full_tensor = torch.tensor(BAS_full).to(device).to(torch.float)
-print('>> BAS_full_tensor shape: ',BAS_full_tensor.shape)
-BAS_linsub_basis_tensor = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, use_error_bound=False)
-print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor.shape)
-print(BAS_linsub_basis_tensor.dtype)
+# BAS_full_tensor = torch.tensor(BAS_full).to(device).to(torch.float)
+# print('>> BAS_full_tensor shape: ',BAS_full_tensor.shape)
+# BAS_linsub_basis_tensor = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, use_error_bound=False)
+# print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor.shape)
+# print(BAS_linsub_basis_tensor.dtype)
 
-BAS_dwi_linsub_tensor = BAS_linsub_basis_tensor @ BAS_linsub_basis_tensor.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
+# BAS_dwi_linsub_tensor = BAS_linsub_basis_tensor @ BAS_linsub_basis_tensor.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
 
-BAS_dwi_linsub_tensor = BAS_dwi_linsub_tensor.view(muse_dwi_torch.shape)
+# BAS_dwi_linsub_tensor = BAS_dwi_linsub_tensor.view(muse_dwi_torch.shape)
 
-BAS_dwi_linsub = BAS_dwi_linsub_tensor.detach().cpu().numpy()
-BAS_linsub_denoised = BAS_dwi_linsub * muse_dwi[0]
-BAS_linsub_denoised = BAS_linsub_denoised.T
+# BAS_dwi_linsub = BAS_dwi_linsub_tensor.detach().cpu().numpy()
+# BAS_linsub_denoised = BAS_dwi_linsub * muse_dwi[0]
+# BAS_linsub_denoised = BAS_linsub_denoised.T
 
-print('>> BAS_linsub denoised shape: ', BAS_linsub_denoised.shape)
+# print('>> BAS_linsub denoised shape: ', BAS_linsub_denoised.shape)
 
-#denoise muse data using VAE
-print(bvals.dtype)
-BAS_denoised, BAS_latent = denoising_using_ae(muse_dwi, (N_q, N_z, N_x, N_y), model_BAS, N_latent, 'VAE', device, bvals=bvals)
-BAS_denoised = BAS_denoised.T
-BAS_latent = BAS_latent.T
 
-print('>> BAS denoised shape: ', BAS_denoised.shape)
 
 #denoise muse data using DAE
 
-DTI_denoised, DTI_latent = denoising_using_ae(muse_dwi, (N_q, N_z, N_x, N_y), model_DTI, N_latent, 'VAE', device, bvals=bvals)
+DTI_denoised, DTI_latent = denoising_using_ae(muse_dwi, (N_q, N_z, N_y, N_x), model_DTI, N_latent, 'VAE', device, bvals=bvals)
 DTI_denoised = DTI_denoised.T
 DTI_latent = DTI_latent.T
 
@@ -204,9 +208,9 @@ print('>> latent shape: ', BAS_latent.shape)
 
 muse_dwi = muse_dwi.T
 
-f = h5py.File('denoised_comparison_noise_range_' + str(NR) + '.h5', 'w')
-f.create_dataset('DTI_SVD', data=DTI_linsub_denoised)
-f.create_dataset('BAS_SVD', data=BAS_linsub_denoised)
+f = h5py.File('denoised_VAE_comp_2shot.h5', 'w')
+# f.create_dataset('DTI_SVD', data=DTI_linsub_denoised)
+# f.create_dataset('BAS_SVD', data=BAS_linsub_denoised)
 f.create_dataset('DTI_VAE', data=DTI_denoised)
 f.create_dataset('DTI_VAE_lat', data=DTI_latent)
 f.create_dataset('BAS_VAE', data=BAS_denoised)

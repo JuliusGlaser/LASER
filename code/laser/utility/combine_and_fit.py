@@ -9,10 +9,10 @@ import numpy as np
 import yaml
 from yaml import Loader
 
-reco_data_path = '/home/woody/mfqb/mfqb102h/special_layers/b0_combined/DTI_coil_batching/' 
+reco_data_path = '/home/hpc/mfqb/mfqb102h/LASER/data/denoised/VAE_BAS_denoised.h5' 
 name = 'DecRecon'
 dvs_file_path = '/home/hpc/mfqb/mfqb102h/tech_note_vae_diffusion/latrec/raw-data/data-126-dir/1.0mm_126-dir_R3x3_dvs.h5'
-raw_file_path = '/home/woody/mfqb/mfqb102h/raw/1.0mm_3-shell_R3x3_kdat_slice_032.h5'
+raw_file_path = '/home/woody/mfqb/mfqb102h/meas_MID00203_FID00641_ep2d_diff_ms_2_seg_3x3_126/kdat_slice_000.h5'
 N_latent = 11
 N_diff, N_coils, N_y, N_x = (126, 32, 223, 220)
 run_combine_DWI = False
@@ -30,7 +30,7 @@ run_fit = True
 
 if run_combine_DWI:
     slice_loop = range(0, maxInd, 1)
-    recons_all_slices_dwi = np.zeros((N_diff, N_slices, N_x,N_y), dtype=np.complex_)
+    recons_all_slices_dwi = np.zeros((N_diff, N_slices, N_y, N_x), dtype=np.complex64)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
         f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '.h5', 'r')
@@ -46,7 +46,7 @@ if run_combine_DWI:
     f.close()
 
 if run_combine_latent:
-    recons_all_slices_dwi = np.zeros((N_latent, N_slices, N_x,N_y), dtype=np.float64)
+    recons_all_slices_dwi_latent = np.zeros((N_latent, N_slices, N_y, N_x), dtype=np.float64)
     slice_loop = range(0, maxInd, 1)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
@@ -58,9 +58,9 @@ if run_combine_latent:
         for i in range(MB):
             n_slice = slice_mb_idx[i]
 
-            recons_all_slices_dwi[:,n_slice,:,:] = dwi_data[:,i,:,:]
+            recons_all_slices_dwi_latent[:,n_slice,:,:] = dwi_data[:,i,:,:]
     f = h5py.File(reco_data_path +  name + '_combined_latent_slices.h5', 'w')
-    f.create_dataset(name='DWI_latent', data=recons_all_slices_dwi)
+    f.create_dataset(name='DWI_latent', data=recons_all_slices_dwi_latent)
     f.close()
 
 if run_fit:
@@ -72,7 +72,7 @@ if run_fit:
     bvecs = f2['bvecs'][:]
     f2.close()
 
-    expected_shape = (220,223,42,126)
+    expected_shape = (N_x, N_y, N_slices, N_diff)
     # bvals = bvals.reshape(-1, 1)
     # B = epi.get_B(bvals, bvecs)
 
@@ -88,7 +88,7 @@ if run_fit:
     tenmodel = dti.TensorModel(gtab)
 
 
-    
+    dwi = f['DWI'][:]
 
     dwi = abs(np.squeeze(dwi)) * 1000   #scaling results in better fits
     print(dwi.shape)
