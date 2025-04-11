@@ -76,8 +76,6 @@ def get_sms_phase_shift_torch(ishape:tuple, MB:int, yshift:list, device:str)->to
     else:
         assert (len(yshift) == Nz)
 
-    print(' > sms: yshift ', yshift)
-
     lx = torch.arange(Nx) - Nx // 2
     lx.requires_grad = False
     ly = torch.arange(Ny) - Ny // 2
@@ -121,7 +119,7 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
         b0 (torch.Tensor): b0 to be used for scaling of AE output, shape (X*Y*Z,1),
         x_1 (torch.Tensor): latent real-valued reconstructions of DWI data, shape (X*Y, L)
     Returns:
-        torch.Tensor: decoded, b0 scaled, complex valued, reshaped DWI reconstructions, shape (Q, 1, 1, Z, X, Y)
+        torch.Tensor: decoded, b0 scaled, complex valued, reshaped DWI reconstructions, shape (Q, 1, 1, Z, Y, X)
 
     L = number of latent variables
     X = number of frequency columns
@@ -130,9 +128,9 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Q = number of diffusion directions
     '''
     out = model.decode(x_1)
-    out = (out*torch.real(b0) + 1j*torch.imag(b0)*out).reshape(N_z,N_x, N_y,Q)
+    out = (out*abs(b0)*torch.exp(1j*torch.angle(b0))).reshape(N_z,N_y, N_x,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
-    out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_x,N_y))
+    out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
 
     return out_scaled
 
@@ -590,12 +588,8 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
     b0_mask = bvals > 50
 
     b0 = dwiData[b0_mask, ...]
-    b0_avg = np.mean(b0, dim=0)
-    high_angle_entries = abs(np.angle(b0[0,...])*180/np.pi) > 50
-    b0_combined = b0[0,...]
-    b0_combined[high_angle_entries] = b0_avg[high_angle_entries]
 
-    dwi_scale = np.divide(dwiData, b0_combined,
+    dwi_scale = np.divide(dwiData, b0[0,...],
                         out=np.zeros_like(dwiData),
                         where=dwiData!=0)
 
@@ -628,7 +622,7 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
         latent_tensor = latent_tensor.permute(3,0,1,2)
 
     unscaled_dwi = dwi_model_tensor.detach().cpu().numpy()
-    denoised_dwi = unscaled_dwi * b0_combined
+    denoised_dwi = unscaled_dwi * b0
 
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
@@ -776,6 +770,7 @@ def main():
 
         for param in model.parameters():
             param.requires_grad = False
+        model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
 
         # Calculate yshift of MB acquisition
         yshift = []
@@ -840,7 +835,7 @@ def main():
     #
         if LASER:
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/DecRecon_slice_' + slice_str + '.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+'/DecRecon_slice_' + slice_str + '.h5', 'w')
 
             print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
             shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
@@ -852,10 +847,10 @@ def main():
             t=time()
 
             N_b0 = sum(b0_mask==0)
-            b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
+            b0 = torch.ones(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)*0.0001
             b0.requires_grad  = True
 
-            optimizer   = optim.SGD([b0],lr = 1e-1)
+            optimizer   = optim.SGD([b0],lr = 5e-1, momentum=0.9)
 
             criterion   = nn.MSELoss(reduction='sum')
 
@@ -865,9 +860,9 @@ def main():
                 optimizer.zero_grad()
                 
                 x_multi_shot = Multi_shot_for(b0, shot_phase_tensor[b0_mask==0,...])
-                x_coil_split = coil_for(x_multi_shot, coil_tensor[0,...])
+                x_coil_split = coil_for(x_multi_shot, coil_tensor)
                 x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
-                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[0,...])
+                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[...])
                 x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
 
                 loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
@@ -917,7 +912,7 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)             
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)             
                     x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
@@ -946,7 +941,7 @@ def main():
             lat_img = np.reshape(lat_img, (MB, N_x, N_y, N_latent))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0_combined, x_1)
+            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, x_1)
             decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy()))                    
             decFile.close()
 

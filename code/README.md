@@ -15,6 +15,7 @@
 3. install `laser`:
     ```bash
     pip install -e .
+    pip install -r requirements.txt
     ```
 
     This step will install all necessary dependencies for computation of all scripts on ```cpu```

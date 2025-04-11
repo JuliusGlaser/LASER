@@ -1,6 +1,1 @@
-numpy
-dipy
-sigpy
-torch
-PyYAML
 git+https://github.com/ZhengguoTan/sigpy.git@master#sigpy
