@@ -9,23 +9,31 @@ import numpy as np
 import yaml
 from yaml import Loader
 
-reco_data_path = '/home/hpc/mfqb/mfqb102h/LASER/data/denoised/VAE_BAS_denoised.h5' 
-name = 'DecRecon'
-dvs_file_path = '/home/hpc/mfqb/mfqb102h/tech_note_vae_diffusion/latrec/raw-data/data-126-dir/1.0mm_126-dir_R3x3_dvs.h5'
-raw_file_path = '/home/woody/mfqb/mfqb102h/meas_MID00203_FID00641_ep2d_diff_ms_2_seg_3x3_126/kdat_slice_000.h5'
-N_latent = 11
-N_diff, N_coils, N_y, N_x = (126, 32, 223, 220)
-run_combine_DWI = False
-run_combine_latent = False
-run_fit = True
+stream = open('config.yaml', 'r')
+config = yaml.load(stream, Loader)
+
+reco_data_path = config['reco_data_path']
+name = config['name']
+name_to_save = config['name_to_save']
+dvs_file_path = config['dvs_file_path']
+
+N_latent = config['N_latent']
+
+N_diff = config['N_diff']
+N_coils = config['N_coils']
+N_y = config['N_y']
+N_x = config['N_x']
+MB = config['MB']
+Accel_PE = config['Accel_PE']
+N_slices = config['N_slices']
+N_segments = config['N_segments']    
+
+run_combine_DWI = config['run_combine_DWI']
+run_combine_latent = config['run_combine_latent']
+run_fit = config['run_fit']
 
 # raw slice to get sequence parameters
-f  = h5py.File(raw_file_path, 'r')  
-MB = f['MB'][()]
-accel_factor = f['Accel_PE'][()]
-N_slices = f['Slices'][()]
-N_segments = f['Segments'][()]    
-f.close()
+
 maxInd = int(N_slices/MB)
 
 if run_combine_DWI:
@@ -41,6 +49,7 @@ if run_combine_DWI:
         for i in range(MB):
             n_slice = slice_mb_idx[i]
             recons_all_slices_dwi[:,n_slice,:,:] = dwi_data[:,i,:,:]
+    #TODO: check if file is available already
     f = h5py.File(reco_data_path +  name + '_combined_slices.h5', 'w')
     f.create_dataset(name='DWI', data=recons_all_slices_dwi)
     f.close()
@@ -59,7 +68,9 @@ if run_combine_latent:
             n_slice = slice_mb_idx[i]
 
             recons_all_slices_dwi_latent[:,n_slice,:,:] = dwi_data[:,i,:,:]
-    f = h5py.File(reco_data_path +  name + '_combined_latent_slices.h5', 'w')
+
+    #TODO: check if file is available already
+    f = h5py.File(reco_data_path +  name + '_combined_slices.h5', 'r+')
     f.create_dataset(name='DWI_latent', data=recons_all_slices_dwi_latent)
     f.close()
 
@@ -77,7 +88,6 @@ if run_fit:
     print(bvals.shape)
     print(bvecs.shape)
 
-    from dipy.segment.mask import median_otsu
     from dipy.core.gradients import gradient_table
     gtab = gradient_table(bvals=bvals, bvecs=bvecs, atol=0.1)
 
@@ -101,9 +111,6 @@ if run_fit:
 
     b0 = np.mean(abs(dwi), axis=-1)
     id = b0 > np.amax(b0) * 0.01
-    # b0_mask, mask = median_otsu(b0,
-    #                             median_radius=4,
-    #                             numpass=4)
 
     b1 = np.mean(abs(dwi[..., 1:]), axis=-1)
 

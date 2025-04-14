@@ -182,7 +182,6 @@ def test(network_parameters: NP,
             loss_mse = ae.loss_function_mse(recon_t, clean_t)
             mse_loss += loss_mse.item()
             test_loss += loss.item()
-            print(batch_idx)
 
     # append losses to LC
     Losses.test.append(test_loss / len(loader_test.dataset))
