@@ -372,7 +372,7 @@ def main():
 
                 sphere = dpd.get_sphere()
                 sf_model = sfm.SparseFascicleModel(gtab, sphere=sphere,
-                                                l1_ratio=0.5, alpha=0.001,
+                                                l1_ratio=0.3, alpha=0.0001,
                                                 response=response[0])
 
             # define smaller area of the whole slice to plot and use the transformed coordinates accordingly
@@ -404,16 +404,20 @@ def main():
                 sf_odf = sf_fit.odf(sphere)
                 gfa_scale = gfa(sf_odf)
                 print(FA_scale.shape)
+                
                 print(gfa_scale.shape)
                 scaling = FA_scale[...,None]/gfa_scale[:,:,None,None]
+                print('>> scaling_max: ', np.nanmax(scaling))
                 sf_odf = minmax_normalize(sf_odf)*scaling
+                sf_odf /= np.nanmax(sf_odf)
+                max = np.nanmax(sf_odf)
                 # sf_odf = minmax_normalize(sf_odf)*FA_scale[...,np.newaxis]
                 print(sf_odf.shape)
 
             # slicer output is rotated by 90 degrees counter clockwise compared to input data
-                fodf_spheres = actor.odf_slicer(sf_odf, sphere=sphere, scale=0.4, norm=False, colormap=None)
+                fodf_spheres = actor.odf_slicer(sf_odf, sphere=sphere, scale=0.8, norm=False, colormap=None)
 
-            background = actor.slicer(FA_small, interpolation='nearest', value_range=(0,1.5))
+            background = actor.slicer(FA_small, interpolation='nearest', value_range=(0,1))
 
             scene = window.Scene()
             scene.projection(proj_type='parallel')

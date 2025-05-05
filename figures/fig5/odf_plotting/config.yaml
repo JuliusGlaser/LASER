@@ -14,16 +14,16 @@ orientation_dict:
   cor: [*N_x, *N_z, *N_y, *N_q]
   tra: [*N_x, *N_y, *N_z, *N_q]
 areas_dict:
-  # tn_crossing:
-  #   orientation: "cor"
-  #   slice_ind: 103
-  #   matlab_area_TL: [42, 91] # y, x
-  #   matlab_area_DR: [26, 112]
-  fine_structure:
-    orientation: 'tra'
-    slice_ind: 30
-    matlab_area_TL: [117, 69] # y, x
-    matlab_area_DR: [97, 89]
+  tn_crossing:
+    orientation: "cor"
+    slice_ind: 103
+    matlab_area_TL: [40, 97] # y, x
+    matlab_area_DR: [32, 105]
+  # fine_structure:
+  #   orientation: 'tra'
+  #   slice_ind: 25
+  #   matlab_area_TL: [77, 171] # y, x
+  #   matlab_area_DR: [69, 179]
 
 interactive: False
 sf_calc: False
