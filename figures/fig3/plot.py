@@ -44,7 +44,8 @@ plt.clf()
 create_directory('diff_' + str(q))
 ref_img = np.flipud(abs(muse_dwi[q,z,y_slice,x_slice]))
 vmin = 0
-vmax = np.max(ref_img)*0.8
+vmax = np.max(ref_img)*1
+print('>> vmax: ', vmax)
 create_directory('diff_' + str(q) + '/subfig_A')
 print('>> plotting ref')
 plt.imshow(ref_img, cmap='gray', vmin=vmin, vmax=vmax)
@@ -74,10 +75,12 @@ for fig_key in data_dict:
         print('>> plotting ' + method)
         dwi_ = file[method][:].T
         img = np.flipud(abs(dwi_[q, z, y_slice, x_slice]))
+        plt.clf()
         plt.imshow(img, cmap='gray', vmin=vmin, vmax=vmax)
         plt.axis('off')
         # plt.savefig(fig_key + os.sep + method + '.png', bbox_inches='tight', dpi=500)
         plt.savefig(fig_key + os.sep + method + '.pdf', bbox_inches='tight', dpi=500)
+        
     file.close()
 
 data_dict = {'diff_' + str(q) + '/subfig_differences': '../../code/laser/denoising/denoised_comparison_reco_us_f2_slice_015.h5'}
@@ -96,7 +99,7 @@ for fig_key in data_dict:
         rmse = np.sqrt(np.mean((ref_img - img) ** 2))
         # plt.title('RMSE = ' + str(rmse))
         # plt.savefig(fig_key + os.sep + method + '.png', bbox_inches='tight', dpi=500)
-        plt.savefig(fig_key + os.sep + method + '.pdf', bbox_inches='tight', dpi=500)
+        plt.savefig(fig_key + os.sep + method + '_us.pdf', bbox_inches='tight', dpi=500)
         
         print('RMSE = ', rmse)
     file.close()
@@ -104,6 +107,8 @@ for fig_key in data_dict:
 plt.imshow((ref_img - ref_us)*scaling, cmap='gray', vmin=-vmax, vmax=vmax)
 plt.axis('off')
 rmse = np.sqrt(np.mean((ref_img - ref_us) ** 2))
+print('>> us_ref - ref')
+print('RMSE = ', rmse)
 # plt.title('RMSE = ' + str(rmse))
 # plt.savefig('diff_' + str(q) + '/subfig_differences/Ref_us_ref.png', bbox_inches='tight', dpi=500)
 plt.savefig('diff_' + str(q) + '/subfig_differences/Ref_us_ref.pdf', bbox_inches='tight', dpi=500)

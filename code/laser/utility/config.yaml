@@ -10,10 +10,10 @@
   name: 'DecRecon'                       # shared name of all reconstructed slices
   N_diff: 126                            # number of diffusion encoding directions
   N_coils: 32                            # number of coils
-  N_x: 200                               # Number of X pixels
-  N_y: 200                               # Number of Y pixels
+  N_x: 220                               # Number of X pixels
+  N_y: 223                               # Number of Y pixels
   MB: 3                                  # Multiband factor
-  N_slices: 114                          # number of acquired slices
+  N_slices: 42                          # number of acquired slices
   N_segments: 2                          # number of segments
 
   

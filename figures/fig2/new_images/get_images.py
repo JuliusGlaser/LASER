@@ -60,7 +60,7 @@ x_ind = 127
 y_ind = 98
 z_ind = 2
 y_slice = slice(22,186)
-x_slice = slice(30,172)
+x_slice = slice(35,175)
 
 # Sizes of your plots
 size1 = 11
@@ -171,6 +171,15 @@ plt.clf()
 plt.imshow(np.flipud(abs(b0[z_ind,y_slice,x_slice])),cmap='gray')
 plt.axis('off')
 plt.savefig('b0_'+str(1+diff)+'_slice_'+str(reco_slice)+'_z.pdf', bbox_inches='tight', dpi=300, pad_inches = 0)
+plt.clf()
+
+# scaling
+create_directory('phase')
+# dwi = out*b0[np.newaxis, z_ind, ...]
+for diff in range(images_diff):
+    plt.imshow(np.flipud(np.angle(dwi[1+diff, z_ind,y_slice,x_slice])))
+    plt.axis('off')
+    plt.savefig('phase/phase_dir_'+str(1+diff)+'_slice_'+str(reco_slice)+'_z.pdf', bbox_inches='tight', dpi=300, pad_inches = 0)
 plt.clf()
 
 # scaling
