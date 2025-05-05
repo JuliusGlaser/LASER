@@ -198,8 +198,6 @@ def load_data(key, path_to_data, dictionary, odf_calc, orientationDict):
                 FA   = dataFile['fa'][:]
             except:
                 FA = dataFile['FA'][:]
-            finally:
-                print('Didnt work')
             print('>> FA dec shape:',FA.shape)
     dataFile.close()
 
@@ -207,6 +205,7 @@ def load_data(key, path_to_data, dictionary, odf_calc, orientationDict):
     if odf_calc:
         
         try:
+            print(data.shape)
             assert data.shape == tuple(orientationDict['standard'])
         except AssertionError as e:
             try:
@@ -258,7 +257,7 @@ def main():
     with open('config.yaml', 'r') as file:
         config = yaml.safe_load(file)
 
-    seq_path = normalize_path('..\\raw-data\\data-126-dir\\1.0mm_126-dir_R3x3_dvs.h5')
+    seq_path = normalize_path('..\\..\\..\\data\\raw\\1.0mm_126-dir_R3x3_dvs.h5')
 
     seqInfo = h5py.File(seq_path, 'r')
     bvals   = seqInfo['bvals'][:]
@@ -352,7 +351,7 @@ def main():
             # function:
             if odf_calc:
                 print(data.shape)
-                response, ratio = auto_response_ssst(gtab, data, roi_radii=10, fa_thr=0.75)
+                response, ratio = auto_response_ssst(gtab, data, roi_radii=10, fa_thr=0.65)
 
             ###############################################################################
             # The ``response`` return value contains two entries. The first is an array
@@ -373,7 +372,7 @@ def main():
 
                 sphere = dpd.get_sphere()
                 sf_model = sfm.SparseFascicleModel(gtab, sphere=sphere,
-                                                l1_ratio=0.5, alpha=0.001,
+                                                l1_ratio=0.3, alpha=0.0001,
                                                 response=response[0])
 
             # define smaller area of the whole slice to plot and use the transformed coordinates accordingly
@@ -405,14 +404,18 @@ def main():
                 sf_odf = sf_fit.odf(sphere)
                 gfa_scale = gfa(sf_odf)
                 print(FA_scale.shape)
+                
                 print(gfa_scale.shape)
-                # scaling = FA_scale[...,None]/gfa_scale[:,:,None,None]
-                # sf_odf = minmax_normalize(sf_odf)*scaling
-                # sf_odf = sf_odf*FA_scale[...,np.newaxis]
+                scaling = FA_scale[...,None]/gfa_scale[:,:,None,None]
+                print('>> scaling_max: ', np.nanmax(scaling))
+                sf_odf = minmax_normalize(sf_odf)*scaling
+                sf_odf /= np.nanmax(sf_odf)
+                max = np.nanmax(sf_odf)
+                # sf_odf = minmax_normalize(sf_odf)*FA_scale[...,np.newaxis]
                 print(sf_odf.shape)
 
             # slicer output is rotated by 90 degrees counter clockwise compared to input data
-                fodf_spheres = actor.odf_slicer(sf_odf, sphere=sphere, scale=0.5, norm=True, colormap=None)
+                fodf_spheres = actor.odf_slicer(sf_odf, sphere=sphere, scale=0.8, norm=False, colormap=None)
 
             background = actor.slicer(FA_small, interpolation='nearest', value_range=(0,1))
 
@@ -553,7 +556,7 @@ def main():
 
             scene.clear()
             
-            if key == 'BAS':
+            if key == list(data_dict.items())[-1][0]:
                 if params.orientation == 'tra':
                     #TODO: implement
                     background = actor.slicer(FA[40:180, :, params.slice_ind:params.slice_ind+1], interpolation='nearest')

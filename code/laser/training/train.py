@@ -25,6 +25,7 @@ from laser.training.models.nn import autoencoder as ae
 import laser.training.linsub
 from laser.training.util_classes import Losses_class as LC
 from laser.training.util_classes import Network_parameters as NP
+from torch.utils.tensorboard import SummaryWriter
 
 def train(network_parameters: NP, 
           loader_train: data.DataLoader, 
@@ -35,7 +36,8 @@ def train(network_parameters: NP,
           epoch: int, 
           Losses: LC, 
           gamma_x: float, 
-          scalingMatrix: np.array)-> LC:
+          scalingMatrix: np.array,
+          writer: SummaryWriter)-> LC:
     """
     train function for neural networks, VAE or DAE.
 
@@ -114,6 +116,7 @@ def train(network_parameters: NP,
         Losses.kld.append(kld_loss / len(loader_train.dataset))
         Losses.recon.append(recon_loss / len(loader_train.dataset))
         Losses.mse_train = (mse_train/len(loader_train.dataset))
+        writer.add_scalar("Loss_mse/train", mse_train, epoch)
 
     print('====> Epoch: {} Average loss Training: {:12.6f}'.format(epoch, Losses.train[-1]))
 
@@ -127,7 +130,8 @@ def test(network_parameters: NP,
          loss_function: torch.nn.modules.loss, 
          epoch: int, 
          h5pyFile: h5py.File, 
-         Losses: LC) -> LC:
+         Losses: LC,
+         writer: SummaryWriter) -> LC:
     """
     test function for neural networks, VAE or DAE.
     Also saves model checkpoints for usage and at final epoch count optimizer step additionally.
@@ -182,6 +186,7 @@ def test(network_parameters: NP,
     # append losses to LC
     Losses.test.append(test_loss / len(loader_test.dataset))
     Losses.mse.append(mse_loss / len(loader_test.dataset))
+    writer.add_scalar("Loss_mse/test", mse_loss, epoch)
 
     if network_parameters.model == 'VAE':
         Losses.testKld.append(kld_loss / len(loader_test.dataset))
@@ -375,6 +380,8 @@ def main():
     print(f'>> directory: {given_dir}\n')
     ACQ_DIR = given_dir
 
+    writer = SummaryWriter(log_dir=ACQ_DIR)
+
     # Setup training and testing data as well as network and training parameters and file to store losses
     NetworkParameters, x_clean, original_D, b0_mask, scalingMatrix = setup(ACQ_DIR)
     N_diff = scalingMatrix.shape[0]
@@ -391,12 +398,13 @@ def main():
     for epoch in range(1, NetworkParameters.epochs+1, 1):
         # training of netowrk with adaptive KLD update (see train method for more info)
         gamma_x = np.sqrt(Losses.mse_train)
-        Losses = train(NetworkParameters, loader_train, optimizer, model, device, loss_function, epoch, Losses, gamma_x, scalingMatrix)
+        Losses = train(NetworkParameters, loader_train, optimizer, model, device, loss_function, epoch, Losses, gamma_x, scalingMatrix, writer)
         
 
         if epoch == NetworkParameters.epochs or epoch % NetworkParameters.test_epoch_step == 0:
             # testing
-            Losses = test(NetworkParameters, loader_test, optimizer, model, device, loss_function, epoch, f, Losses)
+            Losses = test(NetworkParameters, loader_test, optimizer, model, device, loss_function, epoch, f, Losses, writer)
+        writer.flush()
 
     # create file, where all kind of losses during training and testing are stored
     Losses.create_loss_file(NetworkParameters)
@@ -404,6 +412,7 @@ def main():
     Losses.create_mse_loss_txt_file(NetworkParameters, model)
 
     f.close()
+    writer.close()
 
 if __name__ == "__main__":
     main()

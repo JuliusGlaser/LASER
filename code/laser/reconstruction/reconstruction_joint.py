@@ -673,7 +673,7 @@ def main():
     print('>> LASER devide:', deviceDec)
 
     if muse_recon or shot_recon:
-        device = sp.Device(0)               # 0  for gpu, -1 for cpu
+        device = sp.Device(-1)               # 0  for gpu, -1 for cpu
         # xp = device.xp #TODO: fix cuda support
         print('>> Muse devide:', device)
 
@@ -709,7 +709,7 @@ def main():
         # correct data shape
         kdat = np.squeeze(kdat)  # 4 dim
         kdat = np.swapaxes(kdat, -2, -3)
-        N_diff, N_coils, N_x, N_y = kdat.shape
+        N_diff, N_coils, N_y, N_x = kdat.shape
 
         # split kdat into shots
         N_diff = kdat.shape[-4]
@@ -834,16 +834,15 @@ def main():
     # LAtent Space dEcoded Reconstruction (LASER)
     #
         if LASER:
-            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '/DecRecon_slice_' + slice_str + '.h5', 'w')
+            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']) + '_joint_new')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '_joint_new'+'/DecRecon_slice_' + slice_str + '.h5', 'w')
 
-            # load shot phases of multishot acquisition
             print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
             shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
             shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
             shotFile.close()                 
             
-            # Reconstruct the b0 images with MUSE
+
             N_b0 = sum(b0_mask==0)
             b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
             b0.requires_grad  = True
@@ -873,26 +872,23 @@ def main():
 
                 if iter % 10 == 0:
                     print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
-
             b0 = torch.squeeze(b0)
             decFile.create_dataset('b0', data=np.array(b0.detach().cpu().numpy()))
             b0 = torch.reshape(b0, (N_b0, MB*N_y*N_x))
             b0 = torch.permute(b0, (-1,0)).detach()
 
             t=time()
-
-            # define latent image tensor and dwi phases
+            # define latent image tensor
             x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
+            # b0  = torch.ones(MB*N_x*N_y,1, dtype=torch.float32).to(deviceDec)*0.001
             phase  = torch.zeros(MB*N_x*N_y,N_diff, dtype=torch.float32).to(deviceDec)*0.001
             x_1.requires_grad  = True
-            
-            # use reconstructed b0 as initialization for scaling image
             b0 = abs(b0[:,0:1]).to(deviceDec)
             b0.requires_grad  = True
             phase.requires_grad = True
             
             optimizer   = optim.Adam([x_1, phase],lr = 1e-1)
-            optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.1)         #SGD optimizer and low learning rate for b0 as otherwise rather unstable reco
+            optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.1)
 
             criterion   = nn.MSELoss(reduction='sum')
 
@@ -920,7 +916,9 @@ def main():
                         loss += loss_of_tv
                 loss.backward()
                 optimizer2.step()
-                optimizer.step()
+                if iter > 0:
+                    optimizer.step()
+                # scheduler.step()
 
                 running_loss = loss.item()
                 if np.isnan(running_loss):
