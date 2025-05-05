@@ -673,7 +673,7 @@ def main():
     print('>> LASER devide:', deviceDec)
 
     if muse_recon or shot_recon:
-        device = sp.Device(-1)               # 0  for gpu, -1 for cpu
+        device = sp.Device(0)               # 0  for gpu, -1 for cpu
         # xp = device.xp #TODO: fix cuda support
         print('>> Muse devide:', device)
 
@@ -834,8 +834,8 @@ def main():
     # LAtent Space dEcoded Reconstruction (LASER)
     #
         if LASER:
-            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']) + '_joint_new')
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '_joint_new'+'/DecRecon_slice_' + slice_str + '.h5', 'w')
+            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '/DecRecon_slice_' + slice_str + '.h5', 'w')
 
             # load shot phases of multishot acquisition
             print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')

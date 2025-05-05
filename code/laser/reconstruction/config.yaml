@@ -1,6 +1,6 @@
 # This is the config file for the reconstruction.py file
 
-modelPath: ../training/test/          # directory of the saved model checkpoint
+modelPath: ../training/trained_data/BAS/          # directory of the saved model checkpoint
 data_directory: ../../../data/raw/                # directory to the raw data
 save_directory: ../../../data/                    # directory where the directories of the reconstructions are created and the results then stored
 
@@ -8,7 +8,7 @@ coil_file_name: 1.0mm_126-dir_R3x3_coils          # name of the file storing coi
 data_file_name: 1.0mm_126-dir_R3x3_kdat_slice_    # shared name of the data files
 diff_enc_file_name: 1.0mm_126-dir_R3x3_dvs        # name of the dvs file storing b-values and gradient vectors of the acquisition
 
-device: cpu                                      # device on which the reconstructions are run
+device: cuda                                      # device on which the reconstructions are run
 reg_weight: 3e-10                                 # weighting of the TV regularization for LASER                         
 slice_index: 0                                   # slice to reconstruction (beginning)
 slice_increment: 1                                # up to which slice reconstruction shall be run?

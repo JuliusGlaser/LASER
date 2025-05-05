@@ -64,14 +64,14 @@ for key in dict:
     print('>>cfa.shape = ', cfa.shape)
     
     for q in range(len(q_values)):
-        img = np.rot90(abs(dwi[30:172,22:186,slice_idx,q_values[q]]),1)
+        img = np.rot90(abs(dwi[35:175,22:186,slice_idx,q_values[q]]),1)
         if key == 'MUSE':
             #define vmax, vmin according to Muse image
             vmaxes.append(np.max(img))
             vmines.append(np.min(img))
         axes[dict[key]['row'],q].imshow(img, cmap='gray', vmax=vmaxes[q], vmin=vmines[q])
         axes[dict[key]['row'],q].axis('off')
-    cfa_img = np.rot90(cfa[30:172,22:186,slice_idx,:])
+    cfa_img = np.rot90(cfa[35:175,22:186,slice_idx,:])
     axes[dict[key]['row'],-1].imshow(cfa_img)
     axes[dict[key]['row'],-1].axis('off')
 
