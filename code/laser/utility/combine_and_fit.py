@@ -75,9 +75,18 @@ if run_combine_latent:
     f.close()
 
 if run_fit:
-    f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
-    dwi = f['DWI'][:]
-    f.close()
+    f = h5py.File(r'W:\radiologie\mrt-probanden\AG_Laun\Julius Glaser\Revision_bipolar\reconstructions\\GT\GT_avg.h5', 'r+')
+    # dwi = f['DWI'][:]
+    # f['DWI'][:,1,:,:] = f['DWI'][:,4,:,:]
+    # f['DWI'][:,3,:,:] = f['DWI'][:,4,:,:]
+    # f.close()
+    # f = h5py.File(r'W:\radiologie\mrt-probanden\AG_Laun\Julius Glaser\LASER_revision\meas_MID00282_FID07804_1shot_only_PF_data_LASER\PI_GT\PI_comb_GT.h5', 'w')
+    # f.create_dataset('DWI', data=dwi[0:126,...])
+    # f.create_dataset('DWI2', data=dwi[126::,...])
+    # f.close()
+    # f = h5py.File(r'W:\radiologie\mrt-probanden\AG_Laun\Julius Glaser\LASER_revision\meas_MID00282_FID07804_1shot_only_PF_data_LASER\PI_GT\PI_comb_GT.h5', 'r+')
+    # dwi = f['DWI'][:]
+    # f.close()
     f2 = h5py.File(r'C:\Workspace\tech_note_vae_diffusion\latrec\raw-data\data-126-dir\1.0mm_126-dir_R3x3_dvs.h5', 'r')
     bvals = f2['bvals'][:]
     bvecs = f2['bvecs'][:]
@@ -128,7 +137,7 @@ if run_fit:
     RGB = (RGB.T).T
     MD  = (MD.T).T
 
-    f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
+    # f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
     f.create_dataset('fa', data=FA)
     f.create_dataset('cfa', data=RGB)
     # f.create_dataset('DWI', data=dwi/1000)

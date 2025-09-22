@@ -27,6 +27,8 @@ from laser.training.util_classes import Losses_class as LC
 from laser.training.util_classes import Network_parameters as NP
 from torch.utils.tensorboard import SummaryWriter
 
+np.random.seed(42)
+
 def train(network_parameters: NP, 
           loader_train: data.DataLoader, 
           optim: torch.optim.Optimizer, 

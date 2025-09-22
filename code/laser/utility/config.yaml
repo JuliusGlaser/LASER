@@ -8,13 +8,15 @@
 
   reco_data_path: '../../../data/LLR/' # path to directory where reconstructed data is stored
   name: 'JETS'                       # shared name of all reconstructed slices
+  name_to_save: DecRecon_us3_w_phase_w_strong_reg
   N_diff: 126                            # number of diffusion encoding directions
   N_coils: 32                            # number of coils
-  N_x: 220                               # Number of X pixels
-  N_y: 223                               # Number of Y pixels
-  MB: 3                                  # Multiband factor
-  N_slices: 42                          # number of acquired slices
-  N_segments: 2                          # number of segments
+  N_x: 110                               # Number of X pixels
+  N_y: 110                               # Number of Y pixels
+  MB: 1                                  # Multiband factor
+  N_slices: 26                          # number of acquired slices
+  N_segments: 1                          # number of segments
+  Accel_PE: 1
 
   
   N_latent: 11                           # number of latent variables of reconstruction (only necessary if run_fit is true)

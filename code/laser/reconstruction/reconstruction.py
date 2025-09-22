@@ -313,7 +313,7 @@ def get_coil(slice_mb_idx: list, coil_path: str, device: str, MB: int)->torch.Te
         torch.Tensor: coil profiles for slices to reconstruct
     '''
     coils = h5py.File(coil_path, 'r')
-    coil_torch = torch.tensor(coils['coil'][:], dtype=torch.complex64).to(device).detach() # c,z,x,y
+    coil_torch = torch.tensor(coils['csm'][:], dtype=torch.complex64).to(device).detach() # c,z,x,y
     coil_torch.requires_grad = False
     for i in range(MB):
         coil = torch.unsqueeze(coil_torch[:,slice_mb_idx[i],...], dim=1)
@@ -483,7 +483,7 @@ def ShotRecon(y, coils, MB=1, acs_shape=[64, 64],
           NeuroImage 2013;72:41-47.
     """
     Ndiff, Nshot, Ncoil, Nz_collap, Ny, Nx = y.shape
-    assert(Nshot > 1)  # MUSE is a multi-shot technique
+    # assert(Nshot > 1)  # MUSE is a multi-shot technique
 
     _Ncoil, Nz, _Ny, _Nx = coils.shape
 
@@ -658,6 +658,9 @@ def main():
     parser = argparse.ArgumentParser(description="Parser to overwrite slice_idx and slice_inc")
     parser.add_argument("--slice_idx", type=int, default=slice_idx, help="Slice_idx to reconstruct")
     parser.add_argument("--slice_inc", type=int, default=slice_inc, help="slice increment if multiple slice recon")
+    parser.add_argument("--part", type=int, default=1)
+    parser.add_argument('--us', type=int, default=2)
+
     args = parser.parse_args()
     slice_idx = args.slice_idx
     slice_inc = args.slice_inc
@@ -679,11 +682,11 @@ def main():
 
     slice_str = '000'
     print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
-    f  = h5py.File(data_dir + data_name + slice_str+ '.h5', 'r')
+    f  = h5py.File(data_dir + data_name + slice_str+ '_us'+str(args.us)+'.h5', 'r')
     MB = f['MB'][()]
     N_slices = f['Slices'][()]
     N_segments = f['Segments'][()]
-    N_Accel_PE = f['Accel_PE'][()]
+    N_Accel_PE = 1#f['Accel_PE'][()]
     f.close()
 
     # number of collapsed slices
@@ -702,14 +705,14 @@ def main():
 
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f  = h5py.File(data_dir + data_name +slice_str+'.h5', 'r')
-        kdat = f['kdat'][:]
+        f  = h5py.File(data_dir + data_name +slice_str+'_us'+str(args.us)+'.h5', 'r')
+        kdat = f['kdat' + str(args.part)][:]
         f.close()
 
         # correct data shape
         kdat = np.squeeze(kdat)  # 4 dim
         kdat = np.swapaxes(kdat, -2, -3)
-        N_diff, N_coils, N_x, N_y = kdat.shape
+        N_diff, N_coils, N_y, N_x = kdat.shape
 
         # split kdat into shots
         N_diff = kdat.shape[-4]
@@ -729,22 +732,24 @@ def main():
         print('>> slice_mb_idx: ', slice_mb_idx)
 
         # Get coils
-        f = h5py.File(data_dir + coil_name + '.h5', 'r')
+        f = h5py.File(r'W:\radiologie\mrt-probanden\AG_Laun\Julius Glaser\Revision_bipolar\raw\meas_MID00162_FID00911_Scan_for_coil_sense/coils_reord.h5', 'r') #TODO: revert hardcoding
         coil = f['coil'][:]
         f.close()
         coil2 = coil[:, slice_mb_idx, :, :]
         coil_path = data_dir + coil_name + '.h5'
-        coil_tensor = get_coil(slice_mb_idx,coil_path, device=deviceDec, MB=MB)
+        # coil_tensor = get_coil(slice_mb_idx,coil_path, device=deviceDec, MB=MB)
+        coil_tensor = torch.tensor(coil2[np.newaxis, np.newaxis,...],dtype=torch.complex64, device=deviceDec )
 
 
-        kdat_tensor = torch.tensor(kdat_prep, device=deviceDec)      
+        kdat_tensor = torch.tensor(kdat_prep, device=deviceDec)    
+        
         t=time()                                
         sms_phase_tensor = get_sms_phase(MB, N_y, N_x, N_Accel_PE, deviceDec) 
         print(sms_phase_tensor.shape)
         print('\n\n>> SMS phase recon time', -t+time())                       
         mask = get_us_mask(kdat_tensor, deviceDec)
         
-        f = h5py.File(data_dir + diff_enc_name + '.h5', 'r')
+        f = h5py.File(r'C:\Workspace\LASER\data\raw\1.0mm_126-dir_R3x3_dvs.h5', 'r') #TODO: revert hardcoding
         bvals = f['bvals'][:]
         bvecs = f['bvecs'][:]
         f.close()
@@ -811,7 +816,7 @@ def main():
         if shot_recon:
             print('>> shot_recon')
             create_directory(save_dir + 'shot_phases')
-            shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'w')
+            shotFile = h5py.File(save_dir + 'shot_phases/shot_phase_slice_' + slice_str + '.h5', 'w')
             ts=time()        
 
             acs_shape = [N_y // 4, N_x // 4]
@@ -835,11 +840,11 @@ def main():
     #
         if LASER:
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '/DecRecon_slice_' + slice_str + '.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
 
             # load shot phases of multishot acquisition
-            print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
-            shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
+            print('>> Shot phase directory: ' + save_dir + 'shot_phases/shot_phase_slice_' + slice_str + '.h5')
+            shotFile = h5py.File(save_dir + 'shot_phases/shot_phase_slice_' + slice_str + '.h5', 'r')
             shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
             shotFile.close()                 
             
@@ -853,8 +858,8 @@ def main():
 
             criterion   = nn.MSELoss(reduction='sum')
 
-            iterations  = 150
-
+            iterations  = 50
+            print('\nb0 estimation\n')
             for iter in range(iterations):
                 optimizer.zero_grad()
                 
@@ -883,25 +888,26 @@ def main():
 
             # define latent image tensor and dwi phases
             x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
-            phase  = torch.zeros(MB*N_x*N_y,N_diff, dtype=torch.float32).to(deviceDec)*0.001
+            phase  = torch.zeros((MB*N_x*N_y,N_diff), dtype=torch.float32).to(deviceDec)*0.001
             x_1.requires_grad  = True
             
             # use reconstructed b0 as initialization for scaling image
             b0 = abs(b0[:,0:1]).to(deviceDec)
-            b0.requires_grad  = True
-            phase.requires_grad = True
+            b0.requires_grad  = False
+            # phase.requires_grad = True
             
             optimizer   = optim.Adam([x_1, phase],lr = 1e-1)
-            optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.1)         #SGD optimizer and low learning rate for b0 as otherwise rather unstable reco
+            # optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.1)         #SGD optimizer and low learning rate for b0 as otherwise rather unstable reco
 
             criterion   = nn.MSELoss(reduction='sum')
 
-            iterations  = 150
+            iterations  = 300
             loss_values = []
 
-
+            print('\nfull diffusion estimation\n')
             for iter in range(iterations):
                 optimizer.zero_grad()
+                # optimizer2.zero_grad()
                 loss = 0.0
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
@@ -919,7 +925,7 @@ def main():
                     if iter > 1:
                         loss += loss_of_tv
                 loss.backward()
-                optimizer2.step()
+                # optimizer2.step()
                 optimizer.step()
 
                 running_loss = loss.item()
