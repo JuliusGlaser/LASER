@@ -6,9 +6,9 @@
   run_combine_latent: False               # run combination for latent images (only Decoder recon)
   run_fit: True                          # run fit for DWI data (only possible if data has been combined first)
 
-  reco_data_path: '../../../data/LLR/' # path to directory where reconstructed data is stored
-  name: 'JETS'                       # shared name of all reconstructed slices
-  name_to_save: DecRecon_us3_w_phase_w_strong_reg
+  reco_data_path: '/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/averaged_us2/LASER/VAE_BAS/' # path to directory where reconstructed data is stored
+  name: 'DecRecon'                       # shared name of all reconstructed slices
+  name_to_save: BAS_reco_us2
   N_diff: 126                            # number of diffusion encoding directions
   N_coils: 32                            # number of coils
   N_x: 110                               # Number of X pixels
@@ -22,4 +22,4 @@
   N_latent: 11                           # number of latent variables of reconstruction (only necessary if run_fit is true)
 
 
-  dvs_file_path: '../../../data/raw/1.0mm_126-dir_R3x3_dvs.h5' # path to dvs file which stores b-values and gradient vectors of acquisition (only necessary if run_fit is true)
+  dvs_file_path: /home/hpc/mfqb/mfqb102h/LASER/data/raw/1.0mm_126-dir_R3x3_dvs.h5 # path to dvs file which stores b-values and gradient vectors of acquisition (only necessary if run_fit is true)
