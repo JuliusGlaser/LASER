@@ -1,11 +1,11 @@
 path_to_data: W:\radiologie\mrt-probanden\AG_Laun\Julius Glaser\Revision_bipolar\reconstructions\
 dictionary:
   GT: "GT_avg"
-  # PI: "PI_comb_us3_1"
-  # PI_MPPCA: PI_comb_us3_1_cplx_denoise
+  PI: "PI_comb_us3_1"
+  # PI_MPPCA: MPPCA_denoised_PI_us3_1
   # DTI: "DTI_us3_comb_1"
   # LLR: "LLR_us3_l_1_comb_1"
-  BAS: "BAS_us3_comb_1"
+  # BAS: "BAS_us3_comb_1"
 N_x: &N_x 110
 N_y: &N_y 110
 N_z: &N_z 26
@@ -15,11 +15,33 @@ orientation_dict:
   cor: [*N_x, *N_z, *N_y, *N_q]
   tra: [*N_x, *N_y, *N_z, *N_q]
 areas_dict:
-  MSMT_CSD:
+  MSMT_high_res_sphere_slice_10_own_rf_each_bs:
+    orientation: "tra"
+    slice_ind: 10
+    matlab_area_TL: [105, 18] # y, x
+    matlab_area_DR: [12, 93]
+    # matlab_area_TL: [105, 18] # y, x
+    # matlab_area_DR: [12, 93]
+  MSMT_high_res_sphere_slice_11_own_rf_each_bs:
+    orientation: "tra"
+    slice_ind: 11
+    matlab_area_TL: [105, 18] # y, x
+    matlab_area_DR: [12, 93]
+  MSMT_high_res_sphere_slice_12_own_rf_each_bs:
     orientation: "tra"
     slice_ind: 12
-    matlab_area_TL: [110, 1] # y, x
-    matlab_area_DR: [1, 110]
+    matlab_area_TL: [105, 18] # y, x
+    matlab_area_DR: [12, 93]
+  # MSMT_high_res_sphere_slice_13_own_rf_each_bs:
+  #   orientation: "tra"
+  #   slice_ind: 13
+  #   matlab_area_TL: [105, 18] # y, x
+  #   matlab_area_DR: [12, 93]
+  # MSMT_high_res_sphere_slice_14_own_rf_each_bs:
+  #   orientation: "tra"
+  #   slice_ind: 14
+  #   matlab_area_TL: [105, 18] # y, x
+  #   matlab_area_DR: [12, 93]
   # fine_structure:
   #   orientation: 'tra'
   #   slice_ind: 25
@@ -32,6 +54,6 @@ odf_calc: True
 plot_joint_fig: True
 
 SH_order: 8
-N_bootstrap: 200
+N_bootstrap: 5
 min_separation_angle: 20
-rel_peak_threshold: 0.01
+rel_peak_threshold: 0.2

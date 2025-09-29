@@ -1,12 +1,19 @@
-import matplotlib.pyplot as plt
+import os
+import h5py
 import numpy as np
+import gc
+import dipy.reconst.sfm as sfm
+from dipy.reconst.odf import gfa
 
-from dipy.core.gradients import gradient_table, unique_bvals_tolerance
-from dipy.data import get_fnames, get_sphere
-from dipy.denoise.localpca import mppca
-import dipy.direction.peaks as dp
-from dipy.io.gradients import read_bvals_bvecs
+import dipy.data as dpd
+from dipy.data import get_sphere
+
+import dipy.direction.peaks as dpp
+
 from dipy.io.image import load_nifti
+from dipy.io.gradients import read_bvals_bvecs
+from dipy.core.gradients import gradient_table, unique_bvals_tolerance
+from dipy.reconst.csdeconv import auto_response_ssst
 from dipy.reconst.mcsd import (
     MultiShellDeconvModel,
     auto_response_msmt,
@@ -16,51 +23,25 @@ from dipy.reconst.mcsd import (
 )
 import dipy.reconst.shm as shm
 from dipy.segment.mask import median_otsu
-from dipy.segment.tissue import TissueClassifierHMRF
-from dipy.viz import actor, window
-import h5py
 from dipy.direction import peaks_from_model
-
-import cvxpy
-from itertools import permutations, product
-
-sphere = get_sphere(name="symmetric724")
-
-
-"""
-.. _reconst_sfm:
-
-==============================================
-Reconstruction with the Sparse Fascicle Model
-==============================================
-
-In this example, we will use the Sparse Fascicle Model (SFM) [Rokem2015]_, to
-reconstruct the fiber Orientation Distribution Function (fODF) in every voxel.
-
-First, we import the modules we will use in this example:
-"""
-
-import os
-import h5py
-import numpy as np
-import gc
-import dipy.reconst.sfm as sfm
-from dipy.reconst.odf import gfa
-
-import dipy.data as dpd
-import dipy.direction.peaks as dpp
-from dipy.io.image import load_nifti
-from dipy.io.gradients import read_bvals_bvecs
-from dipy.core.gradients import gradient_table
-from dipy.reconst.csdeconv import auto_response_ssst
-from dipy.viz import window, actor
+from dipy.segment.tissue import TissueClassifierHMRF
 from PIL import Image
 import matplotlib.pyplot as plt
 import copy
+from dipy.core.sphere import unit_icosahedron
+import cvxpy
+from itertools import permutations, product
+# use high angular resolution sphere
+sphere = unit_icosahedron.subdivide(n=6)#get_sphere(name="symmetric724")
+
 
 import yaml
 from yaml import Loader
 from time import time
+import warnings
+
+# Suppress a warning with a matching message
+warnings.filterwarnings("ignore", message=".*Solution may be inaccurate.*", category=UserWarning)
 
 class Parameters:
     def __init__(self, orientation: str, 
@@ -290,7 +271,7 @@ def load_data_bootstrap(key, path_to_data, dictionary, odf_calc, orientationDict
     if odf_calc:
         
         try:
-            print(data.shape)
+            # print(data.shape)
             assert data.shape == tuple(orientationDict['standard'])
         except AssertionError as e:
             try:
@@ -311,50 +292,78 @@ def angle_between_vectors(a, b):
     return np.arccos(cos_theta)
 
 def calc_angles(GT_vector1, GT_vector2, PI_vector1, PI_vector2):
-
-    only1vec = False
+    ''' For entries where an entry is expected but none was fitte we return np.inf
+        For entries where no entry is expected and none was fitted we return np.nan'''
+    only1vecGT = False
+    only1vecPI = False
     if np.array_equal(GT_vector2, np.array([0,0,0])) and np.array_equal(GT_vector1, np.array([0,0,0])):
-        print('Warning: no GT vectors!')
-        return [180, 180]
-    if np.array_equal(PI_vector1, np.array([0,0,0])) and np.array_equal(PI_vector2, np.array([0,0,0])):
-        print('Warning: no reco vectors!')
+        # print('Warning: no GT vectors!')
         return [np.nan, np.nan]
+    if np.array_equal(PI_vector1, np.array([0,0,0])) and np.array_equal(PI_vector2, np.array([0,0,0])):
+        # print('Warning: no reco vectors!')
+        # if vector 1 doesn't exist there can't be a vector 2
+        if np.array_equal(GT_vector2, np.array([0,0,0])) and not np.array_equal(GT_vector1, np.array([0,0,0])):
+            return [np.nan, np.inf]
+        else:
+            return [np.inf, np.inf]
     
     if np.array_equal(GT_vector2, np.array([0,0,0])):
         GT_vectors = [GT_vector1]   # Search for only one vector in the PI-vectors
-        only1vec = True
+        only1vecGT = True
         # print('Warning: only one GT vector!')
     else:
         GT_vectors = [GT_vector1, GT_vector2]
 
-    if only1vec:
+    if only1vecGT:
         PI_vectors = [PI_vector1]
+        only1vecPI = True           #FIXME: In theory there is a case where two are fitted but only one GT vector exists
         # print('Warning: only one PI vector!')
     elif np.array_equal(PI_vector2, np.array([0,0,0])):
         PI_vectors = [PI_vector1]
-        print('Warning: only one PI vector althoug 2 GT vectors!')
+        # print('Warning: only one PI vector althoug 2 GT vectors!')
+        only1vecPI = True
     else:
         PI_vectors = [PI_vector1, PI_vector2]
 
-
+    # if only1vec:
+    #     res_ang = [angle_between_vectors(GT_vector1, PI_vector1)]
+    #     # if res_ang[0]>np.pi/2:
+    #     #     res_ang[0] = np.pi - res_ang[0]
+    # else:
+    #     res_ang = [angle_between_vectors(GT_vector1, PI_vector1), angle_between_vectors(GT_vector2, PI_vector2)]
+    #     # if res_ang[0]>np.pi/2:
+    #     #     res_ang[0] = np.pi - res_ang[0]
+    #     # if res_ang[1]>np.pi/2:
+    #     #     res_ang[1] = np.pi - res_ang[1]
     best_combo = None
-    best_total_angle = float("inf")
-
-    # Try all PI permutations and sign flips
+    smallest_ang = np.pi/2
     for pi_perm in permutations(PI_vectors):
         for signs in product([1, -1], repeat=2):
-            angles = [angle_between_vectors(gt, s * pi) 
-                    for gt, pi, s in zip(GT_vectors, pi_perm, signs)]
-            total_angle = sum(angles)
-            if total_angle < best_total_angle:
-                best_total_angle = total_angle
-                best_combo = (pi_perm, signs, angles)
-    # print(best_combo)
-    res_ang = best_combo[-1]
-    if len(res_ang)==1:
+                angles = [angle_between_vectors(gt, s * pi) for gt, pi, s in zip(GT_vectors, pi_perm, signs)]
+                if angles[0]>np.pi/2:
+                    continue
+                if not (only1vecGT or only1vecPI):
+                    if angles[1]>np.pi/2:
+                        continue
+                if angles[0] < smallest_ang:
+                    smallest_ang = angles[0]
+                    best_combo = (pi_perm, signs, angles)             
+                if not (only1vecGT or only1vecPI):
+                    if angles[1] < smallest_ang:
+                        smallest_ang = angles[1]
+                        best_combo = (pi_perm, signs, angles)
+    try:
+        res_ang = best_combo[-1]
+    except TypeError:
+        print('No valid angle combination found!')
+        print('GT vectors:', GT_vectors)
+        print('PI vectors:', PI_vectors)
+        res_ang = [np.inf, np.inf]
+    if len(res_ang)==1 and only1vecGT:
         res_ang.append(np.nan)
-    return res_ang
-
+    elif len(res_ang)==1 and only1vecPI:
+        res_ang.append(np.inf)
+    return np.array(res_ang)
 
 def main():
     with open('config.yaml', 'r') as file:
@@ -394,7 +403,11 @@ def main():
     areas_dict = config['areas_dict']
 
     odf_calc = config['odf_calc']
-                         
+    # print(dictionary)
+    GT_key = 'GT'                           #FIXME: hardcoded
+    data_key = next(iter(dictionary))       #FIXME: hardcoded get the first key
+    dictionary_wo_GT = copy.deepcopy(dictionary)
+    dictionary_wo_GT.pop(GT_key)            # remove it
 
     for area in areas_dict:
         # given the indices from Matlab ArrShow
@@ -409,27 +422,31 @@ def main():
         # Enables/disables interactive visualization and sf_calc (primary diffusion direction)
         i=0
 
-        key = next(iter(dictionary))   # get the first key
         
-        print(key)
-        data = load_data(key, path_to_data, dictionary, odf_calc, orientationDict)
-        dictionary.pop(key)            # remove it
-        data_dict[key]['data'] = data
+        
+        print(GT_key)
+        data = load_data(GT_key, path_to_data, dictionary, odf_calc, orientationDict)
+        # dictionary.pop(GT_key)            # remove it
+        data_dict[GT_key]['data'] = data
         print('>> data loaded')
         print('>> Process GT first')
-        data = data_dict[key]['data']
+        data = data_dict[GT_key]['data']
         if params.orientation == 'cor': #TODO: don't flip but adjust camera view
             data = np.flip(data, 2)
         
-        b0_mask, mask = median_otsu(data, median_radius=10, numpass=1, vol_idx=[0, 1])   #TODO: hardcoded???
+        b0_mask, mask = median_otsu(data, median_radius=5, numpass=2, vol_idx=[0,1])   #TODO: hardcoded???
 
         # data = data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
         #             params.slicer_area_DR[0]:params.slicer_area_TL[0], 
         #             :]
-        print(str(params.slicer_area_DR[1])+':'+str(params.slicer_area_TL[1])+', '+str(params.slicer_area_DR[0])+':'+str(params.slicer_area_TL[0]))
-        auto_response_wm, auto_response_gm, auto_response_csf = auto_response_msmt(
-            gtab, b0_mask, roi_radii=20
-        )
+        print(str(params.slicer_area_DR[1])+':'+str(params.slicer_area_TL[1])+', '+str(params.slicer_area_DR[0])+':'+str(params.slicer_area_TL[0]) + ', '+ 
+                    str(params.slice_ind)+':'+str(params.slice_ind+1))
+        
+        with warnings.catch_warnings():                                                 #Ignore annoying warning of b-values being too high
+            warnings.simplefilter("ignore", category=UserWarning)
+            auto_response_wm, auto_response_gm, auto_response_csf = auto_response_msmt(
+                gtab, b0_mask, roi_radii=20
+            )
         print(b0_mask.shape)
         ubvals = unique_bvals_tolerance(gtab.bvals)
         response_mcsd = multi_shell_fiber_response(
@@ -439,17 +456,6 @@ def main():
             gm_rf=auto_response_gm,
             csf_rf=auto_response_csf,
         )
-
-        
-
-        # print('Response output: ', auto_response_wm)
-        # print('Array entries 1 and 2 should be identical: ', auto_response_wm[0][1] == auto_response_wm[0][2])
-        # print('Array entry 0 should be around 5 times larger than 1 and 2: ', auto_response_wm[0][0] >= auto_response_wm[0][1]*5)
-        # if not (auto_response_wm[0][0] >= auto_response_wm[0][1]*5):
-        #     print('WARNING: only a ratio of ', auto_response_wm[0][0]/auto_response_wm[0][1], ' between axial and radial diffusivity')
-        #     print('Change roi_radii or fa threshold in auto_response_ssst')
-
-        
 
         mcsd_model = MultiShellDeconvModel(gtab, response_mcsd)
 
@@ -463,56 +469,61 @@ def main():
                     params.slice_ind:params.slice_ind+1]
         
         print('>> peak extraction')
-        GT_csd_peaks = peaks_from_model(
-        model=mcsd_model,
-        data=data,
-        sphere=sphere,
-        relative_peak_threshold=rel_peak_threshold,    #TODO: hardcoded???
-        min_separation_angle=min_separation_angle,        #TODO: hardcoded???
-        normalize_peaks=False,
-        mask=mask,
-        parallel=True,
-        num_processes=2,               #TODO: hardcoded???
-        )
+        with warnings.catch_warnings():                                                 #Ignore annoying warning of solver being not accurate enough
+            warnings.simplefilter("ignore", category=UserWarning)
+            GT_csd_peaks = peaks_from_model(
+            model=mcsd_model,
+            data=data,
+            sphere=sphere,
+            relative_peak_threshold=rel_peak_threshold,
+            min_separation_angle=min_separation_angle,
+            normalize_peaks=False,
+            mask=mask,
+            parallel=True,
+            num_processes=2,               #TODO: hardcoded???
+            )
 
         ap = shm.anisotropic_power(GT_csd_peaks.shm_coeff)
-        beta = 0.4
+        ap[(mask == True) & (ap == 0)] += 0.1 # to avoid 0 values in the tissue classification so that csf is calculated correctly
+        beta = 0.25
         nclass = 3
         hmrf = TissueClassifierHMRF()
         initial_segmentation, final_segmentation, PVE = hmrf.classify(ap, nclass, beta)
 
-        csf = np.where(final_segmentation == 1, 1, 0)
-        gm = np.where(final_segmentation == 2, 1, 0)
+        csf_mask = np.where(final_segmentation == 1, 1, 0)
+        gm_mask = np.where(final_segmentation == 2, 1, 0)
         wm_mask = np.where(final_segmentation == 3, 1, 0)
-        
-        
 
 
         print('>> peak extraction done')
         peaks_dirs_GT = GT_csd_peaks.peak_dirs
         peak_values_GT = GT_csd_peaks.peak_values
 
-        # Get rid of 3rd and higher peaks for simplicity
-        peaks_dirs_GT = peaks_dirs_GT[...,0:2,:] * wm_mask[...,None, None]
+        # Get rid of 3rd and higher peaks for simplicity and mask 
+        peaks_dirs_GT = peaks_dirs_GT[...,0:2,:] * mask[...,None, None]
         org_shape = peaks_dirs_GT.shape
         
         
-        peak_values_GT = peak_values_GT[...,0:2] * wm_mask[...,None]
+        peak_values_GT = peak_values_GT[...,0:2] * mask[...,None]
         
 
-        # Start bootstrapping analysis
-        for key in dictionary:
+        # Start bootstrapping analysis TODO: parallelize over keys
+        for data_key in dictionary_wo_GT:
             t = time()
             peaks_dirs_GT = peaks_dirs_GT.reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3], org_shape[4]))
             peak_values_GT = peak_values_GT.reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3]))
-            print(key)
+            print(data_key)
             print('>> start bootstrapping')
-            data1 = load_data_bootstrap(key, path_to_data, dictionary, odf_calc, orientationDict, n='1')
-            data2 = load_data_bootstrap(key, path_to_data, dictionary, odf_calc, orientationDict, n='2')
+            data1 = load_data_bootstrap(data_key, path_to_data, dictionary, odf_calc, orientationDict, n='1')
+            data2 = load_data_bootstrap(data_key, path_to_data, dictionary, odf_calc, orientationDict, n='2')
 
             data_joint = np.stack((data1, data2), axis=-1)  
             angles = np.zeros((params.slicer_area_TL[1]-params.slicer_area_DR[1], params.slicer_area_TL[0]-params.slicer_area_DR[0], 1, N_bootstrap, 2))
             peaks = np.zeros((params.slicer_area_TL[1]-params.slicer_area_DR[1], params.slicer_area_TL[0]-params.slicer_area_DR[0], 1, N_bootstrap, 2))
+
+            peak_file_path =  params.directory +data_key + '_bootstrap_analysis'
+            f = h5py.File(peak_file_path + '.h5', 'w')
+            
             for bs in range(N_bootstrap):
                 print('>> bootstrap number ', bs)
                 bs_lookup = bost_vectors[bs,...]
@@ -521,57 +532,62 @@ def main():
 
                 if params.orientation == 'cor': #TODO: don't flip but adjust camera view
                     bs_data = np.flip(bs_data, 2)
-                
-                bs_data = bs_data*mask[...,None]
-                # bs_data = bs_data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
-                #             params.slicer_area_DR[0]:params.slicer_area_TL[0], 
-                #             :]
-                print(str(params.slicer_area_DR[1])+':'+str(params.slicer_area_TL[1])+', '+str(params.slicer_area_DR[0])+':'+str(params.slicer_area_TL[0]))
-                # auto_response_wm, auto_response_gm, auto_response_csf = auto_response_msmt(                           TODO: NOT SURE IF IT IS VALID TO JUST USE THE SAME RESPONSE ALL THE TIME
-                #     gtab, bs_data, roi_radii=3
-                # )
-                print(bs_data.shape)
-                ubvals = unique_bvals_tolerance(gtab.bvals)
-                response_mcsd = multi_shell_fiber_response(
-                    sh_order_max=SH_order, 
-                    bvals=ubvals,
-                    wm_rf=auto_response_wm,
-                    gm_rf=auto_response_gm,
-                    csf_rf=auto_response_csf,
-                )
-
-                print('Response output: ', auto_response_wm)
-                print('Array entries 1 and 2 should be identical: ', auto_response_wm[0][1] == auto_response_wm[0][2])
-                print('Array entry 0 should be around 5 times larger than 1 and 2: ', auto_response_wm[0][0] >= auto_response_wm[0][1]*5)
-                if not (auto_response_wm[0][0] >= auto_response_wm[0][1]*5):
-                    print('WARNING: only a ratio of ', auto_response_wm[0][0]/auto_response_wm[0][1], ' between axial and radial diffusivity')
-                    print('Change roi_radii or fa threshold in auto_response_ssst')
-
-                
-
-                mcsd_model = MultiShellDeconvModel(gtab, response_mcsd)
-
-                ###############################################################################
-                # We can extract the peaks from the ODF, and plot these as well
+                    
                 bs_data = bs_data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
                             params.slicer_area_DR[0]:params.slicer_area_TL[0], 
                             params.slice_ind:params.slice_ind+1]
+                print('bs_data shape:', bs_data.shape)
+                print('mask shape:', mask.shape)
+                bs_data = bs_data*mask[...,None]
+                
+                print(str(params.slicer_area_DR[1])+':'+str(params.slicer_area_TL[1])+', '+str(params.slicer_area_DR[0])+':'+str(params.slicer_area_TL[0]))
+                with warnings.catch_warnings():                                                 #Ignore annoying warning of b-values being too high
+                    warnings.simplefilter("ignore", category=UserWarning)
+                    auto_response_wm, auto_response_gm, auto_response_csf = auto_response_msmt(                           #TODO: NOT SURE IF IT IS VALID TO JUST USE THE SAME RESPONSE ALL THE TIME
+                        gtab, bs_data, roi_radii=20
+                    )
+                print(bs_data.shape)
+                ubvals = unique_bvals_tolerance(gtab.bvals)
+                with warnings.catch_warnings():                                                 #Ignore annoying warning of b-values being too high
+                    warnings.simplefilter("ignore", category=UserWarning)
+                    response_mcsd = multi_shell_fiber_response(
+                        sh_order_max=SH_order, 
+                        bvals=ubvals,
+                        wm_rf=auto_response_wm,
+                        gm_rf=auto_response_gm,
+                        csf_rf=auto_response_csf,
+                    )
+
+                # print('Response output: ', auto_response_wm)
+                # print('Array entries 1 and 2 should be identical: ', auto_response_wm[0][1] == auto_response_wm[0][2])
+                # print('Array entry 0 should be around 5 times larger than 1 and 2: ', auto_response_wm[0][0] >= auto_response_wm[0][1]*5)
+                # if not (auto_response_wm[0][0] >= auto_response_wm[0][1]*5):
+                #     print('WARNING: only a ratio of ', auto_response_wm[0][0]/auto_response_wm[0][1], ' between axial and radial diffusivity')
+                #     print('Change roi_radii or fa threshold in auto_response_ssst')
+
+                mcsd_model = MultiShellDeconvModel(gtab, response_mcsd)
+
                 print('>> peak extraction')
-                BS_data_csd_peaks = peaks_from_model(
-                model=mcsd_model,
-                data=bs_data,
-                sphere=sphere,
-                relative_peak_threshold=rel_peak_threshold,
-                min_separation_angle=min_separation_angle,
-                normalize_peaks=False,
-                mask=mask,
-                parallel=True,
-                num_processes=2,               #TODO: hardcoded???
-                )
+                with warnings.catch_warnings():                                                 #Ignore annoying warning of solver being not accurate enough
+                    warnings.simplefilter("ignore", category=UserWarning)
+                    BS_data_csd_peaks = peaks_from_model(
+                    model=mcsd_model,
+                    data=bs_data,
+                    sphere=sphere,
+                    relative_peak_threshold=rel_peak_threshold,
+                    min_separation_angle=min_separation_angle,
+                    normalize_peaks=False,
+                    mask=mask,
+                    parallel=True,
+                    num_processes=2,               #TODO: hardcoded???
+                    )
                 print('>> peak extraction done')
 
                 peaks_dirs_bs_data = BS_data_csd_peaks.peak_dirs
                 peak_values_bs_data = BS_data_csd_peaks.peak_values
+                if N_bootstrap <= 10:
+                    f.create_dataset('peak_dirs_bs_' + str(bs), data=peaks_dirs_bs_data)
+                    f.create_dataset('peak_values_bs_' + str(bs), data=peak_values_bs_data)
 
                 # Get rid of 3rd and higher peaks for simplicity
                 peaks_dirs_bs_data = peaks_dirs_bs_data[...,0:2,:].reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3], org_shape[4]))
@@ -592,13 +608,14 @@ def main():
             peaks_dirs_GT = peaks_dirs_GT.reshape((org_shape[0], org_shape[1], org_shape[2], org_shape[3], org_shape[4]))
             peak_values_GT = peak_values_GT.reshape((org_shape[0], org_shape[1], org_shape[2], org_shape[3]))
 
-            peak_file_path =  params.directory +key + '_bootstrap_analysis'
-            f = h5py.File(peak_file_path + '.h5', 'w')
+            
             f.create_dataset('angles', data=angles)
             f.create_dataset('peaks', data=peaks)
             f.create_dataset('org_peaks', data=peak_values_GT)
             f.create_dataset('org_dirs', data=peaks_dirs_GT)
             f.create_dataset('wm_mask', data=wm_mask)
+            f.create_dataset('gm_mask', data=gm_mask)
+            f.create_dataset('csf_mask', data=csf_mask)
             f.create_dataset('mask', data=mask)
             f.close()
             print('>> saving done')
