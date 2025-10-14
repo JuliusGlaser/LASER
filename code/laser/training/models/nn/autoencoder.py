@@ -34,23 +34,30 @@ class CustomLinearEnc(nn.Module):
     """
     Definition of the first encoder layer for AE, where b0 entries of the acquisition are made non learnable 
     """
-    def __init__(self, in_features, out_features, b0_mask, device, fixed_value=0):
+    def __init__(self, in_features, out_features, b0_mask, device, fixed_value=0, reco: bool =False):
         super(CustomLinearEnc, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         non_learnable_indices = [index for index, value in enumerate(b0_mask) if not value]
         self.neuron_indices = non_learnable_indices
+        self.fixed_value = fixed_value
         self.linear = nn.Linear(in_features, out_features)
         self.make_non_learnable()
 
     def make_non_learnable(self):
         with torch.no_grad():
             for index in self.neuron_indices:
-                self.linear.weight[:,index]= 0  
+                self.linear.weight[index,:] = 0
 
     def forward(self, x):
-        self.make_non_learnable()
-        return torch.nn.functional.linear(x, self.linear.weight, self.linear.bias)
+        if not self.reco:
+            self.make_non_learnable()
+        output = torch.nn.functional.linear(x, self.linear.weight, self.linear.bias)
+        if not self.reco:
+            # Set the output of the specific neuron to the fixed value
+            for index in self.neuron_indices:
+                output[:,index] = self.fixed_value
+        return output
 
 class CustomLinearDec(nn.Module):
     """

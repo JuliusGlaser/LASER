@@ -689,7 +689,7 @@ def main():
     MB = f['MB'][()]
     N_slices = f['Slices'][()]
     N_segments = f['Segments'][()]
-    N_Accel_PE = 1#f['Accel_PE'][()]
+    N_Accel_PE = 3#f['Accel_PE'][()]
     f.close()
 
     # number of collapsed slices
@@ -848,10 +848,14 @@ def main():
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
-            print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
-            shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
-            shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
-            shotFile.close()                 
+            if N_segments > 1:
+                print('>> Shot phase directory: ' + save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5')
+                shotFile = h5py.File(save_dir + 'shot_phases/PhaseRecon_slice_' + slice_str + '.h5', 'r')
+                shot_phase_tensor = torch.tensor(shotFile['Shot_phases'][:],dtype=torch.complex64, device=deviceDec )
+                shotFile.close()    
+            else:
+                shot_phase_tensor = torch.ones((1,1,1,1,1,1), dtype=torch.complex64, device=deviceDec)
+
             
             # Reconstruct the b0 images with MUSE
             N_b0 = sum(b0_mask==0)
@@ -904,8 +908,9 @@ def main():
                 optimizer.zero_grad()
                 loss = 0.0
                 for c in range(N_coils):
-                        
-                    x_coil_split = coil_for(dwi, coil_tensor[:,:,c:c+1,:,:,:])
+                    
+                    x_multi_shot = Multi_shot_for(dwi, shot_phase_tensor)
+                    x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                     x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
@@ -941,7 +946,6 @@ def main():
             criterion   = nn.MSELoss(reduction='sum')
 
             iterations  = 300
-            iterations  = 300
             loss_values = []
 
             print('\nfull diffusion estimation\n')
@@ -954,8 +958,8 @@ def main():
                 for c in range(N_coils):
                     
                     x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
-                    # x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
-                    x_coil_split = coil_for(x, coil_tensor[:,:,c:c+1,:,:,:])
+                    x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
+                    x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                     x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
@@ -966,7 +970,7 @@ def main():
                     # if iter > 1:
                     loss += loss_of_tv
                 loss.backward()
-                # optimizer2.step()
+                optimizer2.step()
                 optimizer.step()
                 # optimizer3.step()
 

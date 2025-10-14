@@ -4,6 +4,7 @@ import numpy as np
 import gc
 import dipy.reconst.sfm as sfm
 from dipy.reconst.odf import gfa
+import nibabel as nib
 
 import dipy.data as dpd
 from dipy.data import get_sphere
@@ -189,31 +190,36 @@ def normalize_path(path):
 
     return normalized_path
 
-def load_data(key, path_to_data, dictionary, odf_calc, orientationDict):
-    dataFile = h5py.File(path_to_data + key +  os.sep + dictionary[key]+'.h5', 'r')
-    # if key == 'lpca':
-    #     if odf_calc:
-    #         data = abs(dataFile['DWI'][:])* 1000
-    #     FA   = dataFile['FA_lam_0'][:]
-    #     print('>> FA lpca shape:',FA.shape)
-    data = abs(dataFile['DWI'][:].T)* 1000
-    dataFile.close()
+def load_data(key, path_to_data, dictionary, odf_calc, orientationDict, file_format='hdf5'):
+    if file_format == 'hdf5':
+        dataFile = h5py.File(path_to_data + key +  os.sep + dictionary[key]+ '.h5', 'r')
+        # if key == 'lpca':
+        #     if odf_calc:
+        #         data = abs(dataFile['DWI'][:])* 1000
+        #     FA   = dataFile['FA_lam_0'][:]
+        #     print('>> FA lpca shape:',FA.shape)
+        data = abs(dataFile['DWI'][:].T)* 1000
+        dataFile.close()
 
-    # flip z-axis, because it is necessary from standard data shape #TODO: evaluate if necessary for tra and sag
-    if odf_calc:
-        
-        try:
-            print(data.shape)
-            assert data.shape == tuple(orientationDict['standard'])
-        except AssertionError as e:
+        # flip z-axis, because it is necessary from standard data shape #TODO: evaluate if necessary for tra and sag
+        if odf_calc:
+            
             try:
-                data = data.T
+                print(data.shape)
                 assert data.shape == tuple(orientationDict['standard'])
-                print('data was transposed')
-                
-            except AssertionError as e2:
-                print("Assertion failed")
-                raise
+            except AssertionError as e:
+                try:
+                    data = data.T
+                    assert data.shape == tuple(orientationDict['standard'])
+                    print('data was transposed')
+                    
+                except AssertionError as e2:
+                    print("Assertion failed")
+                    raise
+    elif file_format == 'nii':
+        n1 = nib.load(path_to_data + key +  os.sep + dictionary[key]+ '.nii')
+        data = n1.dataobj.get_unscaled()
+        data = np.array(data)
 
     return data
 
@@ -290,23 +296,31 @@ def angle_between_vectors(a, b):
     cos_theta = np.clip(cos_theta, -1.0, 1.0)  # numerical safety
     return np.arccos(cos_theta)
 
+from itertools import permutations, product
+
+def angle_between_vectors(a, b):
+    a, b = a.flatten(), b.flatten()
+    cos_theta = np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    cos_theta = np.clip(cos_theta, -1.0, 1.0)  # numerical safety
+    return np.arccos(cos_theta)
+
 def calc_angles(GT_vector1, GT_vector2, PI_vector1, PI_vector2):
     ''' For entries where an entry is expected but none was fitte we return np.inf
         For entries where no entry is expected and none was fitted we return np.nan'''
     only1vecGT = False
     only1vecPI = False
-    if np.array_equal(GT_vector2, np.array([0,0,0])) and np.array_equal(GT_vector1, np.array([0,0,0])):
+    if np.all(np.isnan(GT_vector2)) and np.all(np.isnan(GT_vector1)):
         # print('Warning: no GT vectors!')
-        return [np.nan, np.nan]
-    if np.array_equal(PI_vector1, np.array([0,0,0])) and np.array_equal(PI_vector2, np.array([0,0,0])):
+        return [np.nan, np.nan], [np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]
+    if np.all(np.isnan(PI_vector1)) and np.all(np.isnan(PI_vector2)):
         # print('Warning: no reco vectors!')
         # if vector 1 doesn't exist there can't be a vector 2
-        if np.array_equal(GT_vector2, np.array([0,0,0])) and not np.array_equal(GT_vector1, np.array([0,0,0])):
-            return [np.nan, np.inf]
+        if np.all(np.isnan(GT_vector2)) and not np.all(np.isnan(GT_vector1)):
+            return [np.nan, np.inf], [np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]
         else:
-            return [np.inf, np.inf]
+            return [np.inf, np.inf], [np.nan, np.nan, np.nan], [np.nan, np.nan, np.nan]
     
-    if np.array_equal(GT_vector2, np.array([0,0,0])):
+    if np.all(np.isnan(GT_vector2)):
         GT_vectors = [GT_vector1]   # Search for only one vector in the PI-vectors
         only1vecGT = True
         # print('Warning: only one GT vector!')
@@ -317,7 +331,7 @@ def calc_angles(GT_vector1, GT_vector2, PI_vector1, PI_vector2):
         PI_vectors = [PI_vector1]
         only1vecPI = True           #FIXME: In theory there is a case where two are fitted but only one GT vector exists
         # print('Warning: only one PI vector!')
-    elif np.array_equal(PI_vector2, np.array([0,0,0])):
+    elif np.all(np.isnan(PI_vector2)):
         PI_vectors = [PI_vector1]
         # print('Warning: only one PI vector althoug 2 GT vectors!')
         only1vecPI = True
@@ -353,16 +367,74 @@ def calc_angles(GT_vector1, GT_vector2, PI_vector1, PI_vector2):
                         best_combo = (pi_perm, signs, angles)
     try:
         res_ang = best_combo[-1]
+        
     except TypeError:
         print('No valid angle combination found!')
         print('GT vectors:', GT_vectors)
         print('PI vectors:', PI_vectors)
         res_ang = [np.inf, np.inf]
+        associated_vec_1 = [np.nan, np.nan, np.nan]
+        associated_vec_2 = [np.nan, np.nan, np.nan]
     if len(res_ang)==1 and only1vecGT:
         res_ang.append(np.nan)
+        associated_vec_1 = best_combo[0][0] * best_combo[1][0]
+        associated_vec_2 = [np.nan, np.nan, np.nan]
     elif len(res_ang)==1 and only1vecPI:
         res_ang.append(np.inf)
-    return np.array(res_ang)
+        associated_vec_1 = best_combo[0][0] * best_combo[1][0]
+        associated_vec_2 = [np.nan, np.nan, np.nan]
+    else:
+        associated_vec_1 = best_combo[0][0] * best_combo[1][0]
+        associated_vec_2 = best_combo[0][1] * best_combo[1][1]
+    return np.array(res_ang), associated_vec_1, associated_vec_2
+
+def convert_to_nii(data, save_path):
+    data_abs = np.abs(data)
+    data_path = save_path + '_abs.nii'
+    affine=np.array([[-1.81818, 0, 0, 100.612],
+                   [0, 1.81818, 0, -93.01261],
+                   [0, 0, 3.75, -20.7228],
+                   [0, 0, 0, 1]])
+
+    img_abs = nib.Nifti1Image(data_abs, affine=affine)
+    img_abs.header.set_sform(affine, code=1)
+    img_abs.header.set_qform(affine, code=1)
+    nib.save(img_abs, data_path)
+    return data_path
+
+def create_directory(path: str)->bool:
+    """
+    Creates a directory at the specified path if it doesn't already exist.
+
+    Parameters:
+    path (str): The directory path to create.
+
+    Returns:
+    bool: True if the directory was created, False if it already exists.
+    """
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Directory created at: {path}")
+        return True
+    else:
+        print(f"Directory already exists at: {path}")
+        return False
+
+def norm_vec_array(vector_array: np.ndarray) -> np.ndarray:
+    """
+    Normalize a 2D array of vectors.
+
+    Parameters:
+    vector_array (np.ndarray): A 2D numpy array where each row represents a vector.
+
+    Returns:
+    np.ndarray: A 2D numpy array of the same shape with normalized vectors.
+    """
+    norms = np.linalg.norm(vector_array, axis=-1, keepdims=True)
+    # Avoid division by zero
+    norms[norms == 0] = 1
+    normalized_vectors = vector_array / norms
+    return normalized_vectors
 
 def main():
     with open('config.yaml', 'r') as file:
@@ -380,9 +452,8 @@ def main():
     bost_file.close()
 
     N_bootstrap = config['N_bootstrap']
-    SH_order = config['SH_order']
-    min_separation_angle = config['min_separation_angle']
-    rel_peak_threshold = config['rel_peak_threshold']
+    num_fiber = config['num_fiber']
+    bootstrap_dir_name = config['bootstrap_dir_name']
 
 
     print('Using N_bootstrap =', N_bootstrap)
@@ -404,6 +475,7 @@ def main():
     odf_calc = config['odf_calc']
     data_key = next(iter(dictionary))       #FIXME: hardcoded get the first key
     dictionary_wo_GT = copy.deepcopy(dictionary)
+    GT_key = 'GT'
     dictionary_wo_GT.pop(GT_key)            # remove it
 
     for area in areas_dict:
@@ -420,21 +492,18 @@ def main():
         i=0
         
         print(GT_key)
-        data = load_data(GT_key, path_to_data, dictionary, odf_calc, orientationDict)
-        # dictionary.pop(GT_key)            # remove it
+        data = load_data(GT_key, path_to_data, dictionary, odf_calc, orientationDict, file_format='nii')
         data_dict[GT_key]['data'] = data
         print('>> data loaded')
-        print('>> Process GT first')
-        data = data_dict[GT_key]['data']
-        f = h5py.File('/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/mask.h5', 'r')
+        f = h5py.File(path_to_data + 'mask.h5', 'r')
         mask = f['mask'][:]
         f.close()
         try:
-            assert mask.shape == tuple(config['N_x'], config['N_y'], config['N_z'], 1)
+            assert mask.shape == tuple(orientationDict['standard_mask'])
         except AssertionError as e:
             try:
                 mask = mask.T
-                assert mask.shape == tuple(config['N_x'], config['N_y'], config['N_z'], 1)
+                assert mask.shape == tuple(orientationDict['standard_mask'])
                 print('mask was transposed')
                 
             except AssertionError as e2:
@@ -446,123 +515,116 @@ def main():
         #             :]
         print(str(params.slicer_area_DR[1])+':'+str(params.slicer_area_TL[1])+', '+str(params.slicer_area_DR[0])+':'+str(params.slicer_area_TL[0]) + ', '+ 
                     str(params.slice_ind_low)+':'+str(params.slice_ind_high))
-        GT_data = data*mask
+        GT_data = data.copy()
         GT_data = GT_data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
-                    params.slicer_area_DR[0]:params.slicer_area_TL[0], 
-                    params.slice_ind_low:params.slice_ind_high+1, :]
+                            params.slicer_area_DR[0]:params.slicer_area_TL[0], 
+                            params.slice_ind_low:params.slice_ind_high, :]
         print('GT_data shape:', GT_data.shape)
+        org_shape = GT_data.shape
 
-        
+        # Normalize_vectors
+        GT_vec_1 = GT_data[...,0:3]
+        GT_vec_1_norm = norm_vec_array(GT_vec_1)
+        GT_vec_1_norm_flat = GT_vec_1_norm.reshape((org_shape[0]* org_shape[1] * org_shape[2], 3))
+        if num_fiber==2:
+            GT_vec_2 = GT_data[...,3:6]
+            GT_vec_2_norm = norm_vec_array(GT_vec_2)
+            GT_vec_2_norm_flat = GT_vec_2_norm.reshape((org_shape[0]* org_shape[1] * org_shape[2], 3))
+
+               
 
         # Start bootstrapping analysis TODO: parallelize over keys
         for data_key in dictionary_wo_GT:
             t = time()
-            peaks_dirs_GT = peaks_dirs_GT.reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3], org_shape[4]))
+            # peaks_dirs_GT = peaks_dirs_GT.reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3], org_shape[4]))
             print(data_key)
             print('>> start bootstrapping')
             data1 = load_data_bootstrap(data_key, path_to_data, dictionary, odf_calc, orientationDict, n='1')
             data2 = load_data_bootstrap(data_key, path_to_data, dictionary, odf_calc, orientationDict, n='2')
-
             data_joint = np.stack((data1, data2), axis=-1)  
-            angles = np.zeros((params.slicer_area_TL[1]-params.slicer_area_DR[1], params.slicer_area_TL[0]-params.slicer_area_DR[0], 1, N_bootstrap, 2))
-            peaks = np.zeros((params.slicer_area_TL[1]-params.slicer_area_DR[1], params.slicer_area_TL[0]-params.slicer_area_DR[0], 1, N_bootstrap, 2))
-
-            peak_file_path =  params.directory +data_key + '_bootstrap_analysis'
-            f = h5py.File(peak_file_path + '.h5', 'w')
+            
+            angles = np.zeros((org_shape[0], org_shape[1], org_shape[2], N_bootstrap, num_fiber))
+            vec1_comb = np.zeros((org_shape[0], org_shape[1], org_shape[2], N_bootstrap, 3))
+            if num_fiber==2:
+                vec2_comb = np.zeros((org_shape[0], org_shape[1], org_shape[2], N_bootstrap, 3))
             
             for bs in range(N_bootstrap):
                 print('>> bootstrap number ', bs)
                 bs_lookup = bost_vectors[bs,...]
                 bs_data = data_joint[:,:,:,np.arange(len(bs_lookup)), bs_lookup]
-
-
-                if params.orientation == 'cor': #TODO: don't flip but adjust camera view
-                    bs_data = np.flip(bs_data, 2)
-                    
+                bs_data = bs_data*mask 
                 bs_data = bs_data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
-                            params.slicer_area_DR[0]:params.slicer_area_TL[0], 
-                            params.slice_ind:params.slice_ind+1]
+                                    params.slicer_area_DR[0]:params.slicer_area_TL[0], 
+                                    params.slice_ind_low:params.slice_ind_high, :]
+                                
+                save_dir = path_to_data + bootstrap_dir_name + os.sep + str(bs) + os.sep + data_key 
+                create_directory(save_dir)
+                save_path = save_dir + os.sep + 'data'
                 print('bs_data shape:', bs_data.shape)
-                print('mask shape:', mask.shape)
-                bs_data = bs_data*mask[...,None]
-                
-                print(str(params.slicer_area_DR[1])+':'+str(params.slicer_area_TL[1])+', '+str(params.slicer_area_DR[0])+':'+str(params.slicer_area_TL[0]))
-                with warnings.catch_warnings():                                                 #Ignore annoying warning of b-values being too high
-                    warnings.simplefilter("ignore", category=UserWarning)
-                    auto_response_wm, auto_response_gm, auto_response_csf = auto_response_msmt(                           #TODO: NOT SURE IF IT IS VALID TO JUST USE THE SAME RESPONSE ALL THE TIME
-                        gtab, bs_data, roi_radii=20
-                    )
-                print(bs_data.shape)
-                ubvals = unique_bvals_tolerance(gtab.bvals)
-                with warnings.catch_warnings():                                                 #Ignore annoying warning of b-values being too high
-                    warnings.simplefilter("ignore", category=UserWarning)
-                    response_mcsd = multi_shell_fiber_response(
-                        sh_order_max=SH_order, 
-                        bvals=ubvals,
-                        wm_rf=auto_response_wm,
-                        gm_rf=auto_response_gm,
-                        csf_rf=auto_response_csf,
-                    )
+                data_path = convert_to_nii(bs_data, save_path)
+                res_dict = save_dir + os.sep + data_key
 
-                # print('Response output: ', auto_response_wm)
-                # print('Array entries 1 and 2 should be identical: ', auto_response_wm[0][1] == auto_response_wm[0][2])
-                # print('Array entry 0 should be around 5 times larger than 1 and 2: ', auto_response_wm[0][0] >= auto_response_wm[0][1]*5)
-                # if not (auto_response_wm[0][0] >= auto_response_wm[0][1]*5):
-                #     print('WARNING: only a ratio of ', auto_response_wm[0][0]/auto_response_wm[0][1], ' between axial and radial diffusivity')
-                #     print('Change roi_radii or fa threshold in auto_response_ssst')
+                print('data saved to:', data_path)
+                print('res dict:', res_dict)
 
-                mcsd_model = MultiShellDeconvModel(gtab, response_mcsd)
+                #TODO: MRtrix call
+                proc = subprocess.Popen([
+                                        "dwi2fod", "msmt_csd",
+                                        data_path,
+                                        path_to_data + "/wm_response.txt", res_dict + "_WM_FOD.nii",
+                                        path_to_data + "/gm_response.txt",res_dict + "_GM.nii",
+                                        path_to_data + "/csf_response.txt",res_dict + "_CSF.nii",
+                                        "-grad", path_to_data + "/grad_126.b" , "-force"
+                                        ])
+                proc.wait()   # Blocks until it finish
+                proc = subprocess.Popen(["sh2peaks", "-num", str(num_fiber), res_dict+'_WM_FOD.nii', res_dict+'_PEAKS.nii', '-force'])
+                proc.wait()   # Blocks until it finish
 
-                print('>> peak extraction')
-                with warnings.catch_warnings():                                                 #Ignore annoying warning of solver being not accurate enough
-                    warnings.simplefilter("ignore", category=UserWarning)
-                    BS_data_csd_peaks = peaks_from_model(
-                    model=mcsd_model,
-                    data=bs_data,
-                    sphere=sphere,
-                    relative_peak_threshold=rel_peak_threshold,
-                    min_separation_angle=min_separation_angle,
-                    normalize_peaks=False,
-                    mask=mask,
-                    parallel=True,
-                    num_processes=2,               #TODO: hardcoded???
-                    )
-                print('>> peak extraction done')
+                vector_data_file = nib.load(res_dict+'_PEAKS.nii')
+                vector_data = vector_data_file.dataobj.get_unscaled()
+                vector_data = np.array(vector_data)
 
-                peaks_dirs_bs_data = BS_data_csd_peaks.peak_dirs
-                peak_values_bs_data = BS_data_csd_peaks.peak_values
-                if N_bootstrap <= 10:
-                    f.create_dataset('peak_dirs_bs_' + str(bs), data=peaks_dirs_bs_data)
-                    f.create_dataset('peak_values_bs_' + str(bs), data=peak_values_bs_data)
+                rec_vec_1 = vector_data[...,0:3]
+                rec_vec_1_norm = norm_vec_array(rec_vec_1)
+                if num_fiber==2:
+                    rec_vec_2 = vector_data[...,3:6]
+                    rec_vec_2_norm = norm_vec_array(rec_vec_2)
 
-                # Get rid of 3rd and higher peaks for simplicity
-                peaks_dirs_bs_data = peaks_dirs_bs_data[...,0:2,:].reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3], org_shape[4]))
-                peak_values_bs_data = peak_values_bs_data[...,0:2].reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3]))
+                rec_vec_1_norm_flat = rec_vec_1_norm.reshape((org_shape[0]* org_shape[1] * org_shape[2], 3))
+                if num_fiber==2:
+                    rec_vec_2_norm_flat = rec_vec_2_norm.reshape((org_shape[0]* org_shape[1] * org_shape[2], 3))
 
-                for pix in range(peaks_dirs_bs_data.shape[0]):
-                    angle_list = calc_angles(peaks_dirs_GT[pix,0,:], peaks_dirs_GT[pix,1,:], peaks_dirs_bs_data[pix,0,:], peaks_dirs_bs_data[pix,1,:])
+                for pix in range(rec_vec_1_norm_flat.shape[0]):
+                    if num_fiber==1:
+                        angles_diff = angle_between_vectors(GT_vec_1_norm_flat[pix,:], rec_vec_1_norm_flat[pix,:])
+                        asso_vec_1 = rec_vec_1_norm_flat[pix,:]
+                    elif num_fiber==2:
+                        angles_diff, asso_vec_1, asso_vec_2 = calc_angles(GT_vec_1_norm_flat[pix,:], GT_vec_2_norm_flat[pix,:], rec_vec_1_norm_flat[pix,:], rec_vec_2_norm_flat[pix,:])
 
                     zer_dim = pix // (org_shape[1]*org_shape[2])
                     fir_dim = (pix // org_shape[2]) % org_shape[1]
                     sec_dim = pix % org_shape[2]
 
-                    angles[zer_dim, fir_dim, sec_dim, bs, :] = np.array(angle_list)
-                    peaks[zer_dim, fir_dim, sec_dim, bs, :] = peak_values_bs_data[pix,:]
+                    angles[zer_dim, fir_dim, sec_dim, bs, :] = np.array(angles_diff)
+                    vec1_comb[zer_dim, fir_dim, sec_dim,bs,:] = asso_vec_1
+                    if num_fiber==2:
+                        vec2_comb[zer_dim, fir_dim, sec_dim,bs,:] = asso_vec_2
+
+                # remove created directory to safe space
+                if config['remove_bootstrap_data']:
+                    proc = subprocess.Popen(["rm", save_dir, '-r'])
+                    proc.wait()   # Blocks until it finish
 
             print('>> bootstrapping done')
             # Save angles and peak values
-            peaks_dirs_GT = peaks_dirs_GT.reshape((org_shape[0], org_shape[1], org_shape[2], org_shape[3], org_shape[4]))
-            peak_values_GT = peak_values_GT.reshape((org_shape[0], org_shape[1], org_shape[2], org_shape[3]))
-
-            
+            angle_error_path =  path_to_data + bootstrap_dir_name + os.sep + 'bootstrap_analysis_' + data_key
+            f = h5py.File(angle_error_path + '.h5', 'w')            
             f.create_dataset('angles', data=angles)
-            f.create_dataset('peaks', data=peaks)
-            f.create_dataset('org_peaks', data=peak_values_GT)
-            f.create_dataset('org_dirs', data=peaks_dirs_GT)
-            f.create_dataset('wm_mask', data=wm_mask)
-            f.create_dataset('gm_mask', data=gm_mask)
-            f.create_dataset('csf_mask', data=csf_mask)
-            f.create_dataset('mask', data=mask)
+            f.create_dataset('org_vec_1', data=GT_vec_1_norm)
+            f.create_dataset('vec1_comb', data=vec1_comb)
+            if num_fiber==2:
+                f.create_dataset('org_vec_2', data=GT_vec_2_norm)
+                f.create_dataset('vec2_comb', data=vec2_comb)           
             f.close()
             print('>> saving done')
             print('Elapsed time: ', time()-t)
