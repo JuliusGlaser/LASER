@@ -88,6 +88,8 @@ def train(network_parameters: NP,
         elif network_parameters.model == 'VAE':
             recon_t, mu, logvar = model(noisy_t)
             k = (2*N_diff/network_parameters.latent)**2
+            # k = 0.01  # weighting of KLD term, can be adjusted
+
 
             recon_t_scaled = recon_t*scalingMatrix
             clean_t_scaled = clean_t*scalingMatrix

@@ -640,7 +640,7 @@ def main():
     
     DIR = os.path.dirname(os.path.realpath(__file__))
 
-    stream = open('config_LR.yaml', 'r')
+    stream = open('config.yaml', 'r')
     config = yaml.load(stream, Loader)
 
     muse_recon      = config['muse_recon']
@@ -697,7 +697,7 @@ def main():
 
     slice_str = '000'
     print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
-    f  = h5py.File(data_dir + data_name + slice_str+ '_us'+str(args.us)+'.h5', 'r')
+    f  = h5py.File(data_dir + data_name + slice_str+'.h5', 'r')
     MB = f['MB'][()]
     N_slices = f['Slices'][()]
     N_segments = f['Segments'][()]
@@ -720,13 +720,16 @@ def main():
 
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f  = h5py.File(data_dir + data_name +slice_str+'_us'+str(args.us)+'.h5', 'r')
-        kdat = f['kdat' + str(args.part)][:]
+        # f  = h5py.File(data_dir + data_name +slice_str+'_us'+str(args.us)+'.h5', 'r')
+        # kdat = f['kdat' + str(args.part)][:]
+        f  = h5py.File(data_dir + data_name +slice_str+'.h5', 'r')
+        kdat = f['kdat'][:]
         f.close()
 
         # correct data shape
         kdat = np.squeeze(kdat)  # 4 dim
         kdat = np.swapaxes(kdat, -2, -3)
+        kdat = kdat[:,...]
         N_diff, N_coils, N_y, N_x = kdat.shape
 
         # split kdat into shots
@@ -752,7 +755,7 @@ def main():
         coil = f['coil'][:]
         f.close()
         coil2 = coil[:, slice_mb_idx, :, :]
-        coil_path = data_dir + coil_name + '.h5'
+        
         # coil_tensor = get_coil(slice_mb_idx,coil_path, device=deviceDec, MB=MB)
         coil_tensor = torch.tensor(coil2[np.newaxis, np.newaxis,...],dtype=torch.complex64, device=deviceDec )
 
@@ -858,7 +861,7 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection

@@ -174,6 +174,22 @@ def run_statistics_on_angles_masked(dir, mask, slice_idx=[0]):
     data2 = [angle_2_PI_filtered_mask, angle_2_MPPCA_filtered_mask, angle_2_LLR_filtered_mask, angle_2_DTI_filtered_mask, angle_2_BAS_filtered_mask]
     return data1, data2
 
+def run_statistics_on_angles_masked_single_data(dir, mask, vec1_comb, vec2_comb, angles, org_vec1, org_vec2, slice_idx=[0]):
+    # only angle one is relevant for analysis
+
+    vec1_comb = vec1_comb[:,:,slice_idx,:,:]*mask[..., slice_idx,None, None]
+    org_vec1 = org_vec1[:,:,slice_idx,:]*mask[..., slice_idx, None]
+    vec2_comb = vec2_comb[:,:,slice_idx,:,:]*mask[..., slice_idx,None, None]
+    org_vec2 = org_vec2[:,:,slice_idx,:]*mask[..., slice_idx, None]
+    angles_mask = np.where(mask[..., slice_idx,None, None], angles[:,:,slice_idx,:,:], np.nan)
+
+    angle_1_mask = angles_mask[...,0].flatten()
+    angle_1_filtered_mask = angle_1_mask[~np.isnan(angle_1_mask) & ~np.isinf(angle_1_mask)]*180/np.pi
+    angle_2_mask = angles_mask[...,1].flatten()
+    angle_2_filtered_mask = angle_2_mask[~np.isnan(angle_2_mask) & ~np.isinf(angle_2_mask)]*180/np.pi
+
+    return angle_1_filtered_mask, angle_2_filtered_mask
+
 def plot_violins(data, dataNames, save=False, save_path=None):
     num_rows = len(data)
     plot_colors = ["#FF0000", "#750404","#0000FF", "#00FF00", "#B66700"]
@@ -241,179 +257,136 @@ def print_stats(name, data):
 
 
 # Load mask
-index_f = nib.load(r'C:\msys64\home\glaserjs\bootstrap_analysis_1_fod\0\fixel_masks_all_15\index.nii')
+index_f = nib.load(r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF/mask_all_slice.nii')
 index_data = index_f.get_fdata()
 mask_1_plus_fiber_all = (index_data[:,:,0:25,0] > 0).astype(bool)
 mask_2_fiber_all = (index_data[:,:,0:25,0] > 1).astype(bool)
 
-dir = r'W:\radiologie\mrt-probanden\AG_Laun\Julius_Glaser\Revision_bipolar\fod\BS_analysis_slice_all_1000' + os.sep
-save_dir = r'SomeDir' + os.sep
+dir = r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF' + os.sep
+save_dir = r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF/results' + os.sep
 # Load data
 
-# LLR
-f = h5py.File(dir + r'bootstrap_analysis_LLR.h5','r')
-print(f.keys())
-angles_PI = f['angles'][:]
-f.close()
-angle_1_PI = np.where(mask_1_plus_fiber_all[...,None], angles_PI[...,0], np.nan).flatten()
+# # LLR
+# f = h5py.File(dir + r'bootstrap_analysis_LLR.h5','r')
+# print(f.keys())
+# angles_PI = f['angles'][:]
+# f.close()
+# angle_1_PI = np.where(mask_1_plus_fiber_all[...,None], angles_PI[...,0], np.nan).flatten()
 
-angle_1_PI_filtered = angle_1_PI[~np.isnan(angle_1_PI) & ~np.isinf(angle_1_PI)]*180/np.pi
-angle_2_PI = np.where(mask_2_fiber_all[...,None], angles_PI[...,1], np.nan).flatten()
-angle_2_PI_filtered = angle_2_PI[~np.isnan(angle_2_PI) & ~np.isinf(angle_2_PI)]*180/np.pi
+# angle_1_PI_filtered = angle_1_PI[~np.isnan(angle_1_PI) & ~np.isinf(angle_1_PI)]*180/np.pi
+# angle_2_PI = np.where(mask_2_fiber_all[...,None], angles_PI[...,1], np.nan).flatten()
+# angle_2_PI_filtered = angle_2_PI[~np.isnan(angle_2_PI) & ~np.isinf(angle_2_PI)]*180/np.pi
 
-# MPPCA
-f = h5py.File(dir + r'bootstrap_analysis_MPPCA.h5','r')
-print(f.keys())
-angles_MPPCA = f['angles'][:]
-f.close()
-angle_1_MPPCA = np.where(mask_1_plus_fiber_all[...,None], angles_MPPCA[...,0], np.nan).flatten()
-angle_1_MPPCA_filtered = angle_1_MPPCA[~np.isnan(angle_1_MPPCA) & ~np.isinf(angle_1_MPPCA)]*180/np.pi
-angle_2_MPPCA = np.where(mask_2_fiber_all[...,None], angles_MPPCA[...,1], np.nan).flatten()
-angle_2_MPPCA_filtered = angle_2_MPPCA[~np.isnan(angle_2_MPPCA) & ~np.isinf(angle_2_MPPCA)]*180/np.pi
+# # MPPCA
+# f = h5py.File(dir + r'bootstrap_analysis_MPPCA.h5','r')
+# print(f.keys())
+# angles_MPPCA = f['angles'][:]
+# f.close()
+# angle_1_MPPCA = np.where(mask_1_plus_fiber_all[...,None], angles_MPPCA[...,0], np.nan).flatten()
+# angle_1_MPPCA_filtered = angle_1_MPPCA[~np.isnan(angle_1_MPPCA) & ~np.isinf(angle_1_MPPCA)]*180/np.pi
+# angle_2_MPPCA = np.where(mask_2_fiber_all[...,None], angles_MPPCA[...,1], np.nan).flatten()
+# angle_2_MPPCA_filtered = angle_2_MPPCA[~np.isnan(angle_2_MPPCA) & ~np.isinf(angle_2_MPPCA)]*180/np.pi
 
-# LLR
-f = h5py.File(dir + r'bootstrap_analysis_LLR.h5','r')
-print(f.keys())
-angles_LLR = f['angles'][:]
-f.close()
-angle_1_LLR = np.where(mask_1_plus_fiber_all[...,None], angles_LLR[...,0], np.nan).flatten()
-angle_1_LLR_filtered = angle_1_LLR[~np.isnan(angle_1_LLR) & ~np.isinf(angle_1_LLR)]*180/np.pi
-angle_2_LLR = np.where(mask_2_fiber_all[...,None], angles_LLR[...,1], np.nan).flatten()
-angle_2_LLR_filtered = angle_2_LLR[~np.isnan(angle_2_LLR) & ~np.isinf(angle_2_LLR)]*180/np.pi
+# # LLR
+# f = h5py.File(dir + r'bootstrap_analysis_LLR.h5','r')
+# print(f.keys())
+# angles_LLR = f['angles'][:]
+# f.close()
+# angle_1_LLR = np.where(mask_1_plus_fiber_all[...,None], angles_LLR[...,0], np.nan).flatten()
+# angle_1_LLR_filtered = angle_1_LLR[~np.isnan(angle_1_LLR) & ~np.isinf(angle_1_LLR)]*180/np.pi
+# angle_2_LLR = np.where(mask_2_fiber_all[...,None], angles_LLR[...,1], np.nan).flatten()
+# angle_2_LLR_filtered = angle_2_LLR[~np.isnan(angle_2_LLR) & ~np.isinf(angle_2_LLR)]*180/np.pi
 
-# DTI
-f = h5py.File(dir + r'bootstrap_analysis_DTI.h5','r')
-print(f.keys())
-angles_DTI = f['angles'][:]
-f.close()
-angle_1_DTI = np.where(mask_1_plus_fiber_all[...,None], angles_DTI[...,0], np.nan).flatten()
-angle_1_DTI_filtered = angle_1_DTI[~np.isnan(angle_1_DTI) & ~np.isinf(angle_1_DTI)]*180/np.pi
-angle_2_DTI = np.where(mask_2_fiber_all[...,None], angles_DTI[...,1], np.nan).flatten()
-angle_2_DTI_filtered = angle_2_DTI[~np.isnan(angle_2_DTI) & ~np.isinf(angle_2_DTI)]*180/np.pi
+# # DTI
+# f = h5py.File(dir + r'bootstrap_analysis_DTI.h5','r')
+# print(f.keys())
+# angles_DTI = f['angles'][:]
+# f.close()
+# angle_1_DTI = np.where(mask_1_plus_fiber_all[...,None], angles_DTI[...,0], np.nan).flatten()
+# angle_1_DTI_filtered = angle_1_DTI[~np.isnan(angle_1_DTI) & ~np.isinf(angle_1_DTI)]*180/np.pi
+# angle_2_DTI = np.where(mask_2_fiber_all[...,None], angles_DTI[...,1], np.nan).flatten()
+# angle_2_DTI_filtered = angle_2_DTI[~np.isnan(angle_2_DTI) & ~np.isinf(angle_2_DTI)]*180/np.pi
 
-# BAS
-f = h5py.File(dir + r'bootstrap_analysis_BAS.h5','r')
-print(f.keys())
-angles_BAS = f['angles'][:]
-f.close()
-angle_1_BAS = np.where(mask_1_plus_fiber_all[...,None], angles_BAS[...,0], np.nan).flatten()
-angle_1_BAS_filtered = angle_1_BAS[~np.isnan(angle_1_BAS) & ~np.isinf(angle_1_BAS)]*180/np.pi
-angle_2_BAS = np.where(mask_2_fiber_all[...,None], angles_BAS[...,1], np.nan).flatten()
-angle_2_BAS_filtered = angle_2_BAS[~np.isnan(angle_2_BAS) & ~np.isinf(angle_2_BAS)]*180/np.pi
+# # BAS
+# f = h5py.File(dir + r'bootstrap_analysis_BAS.h5','r')
+# print(f.keys())
+# angles_BAS = f['angles'][:]
+# f.close()
+# angle_1_BAS = np.where(mask_1_plus_fiber_all[...,None], angles_BAS[...,0], np.nan).flatten()
+# angle_1_BAS_filtered = angle_1_BAS[~np.isnan(angle_1_BAS) & ~np.isinf(angle_1_BAS)]*180/np.pi
+# angle_2_BAS = np.where(mask_2_fiber_all[...,None], angles_BAS[...,1], np.nan).flatten()
+# angle_2_BAS_filtered = angle_2_BAS[~np.isnan(angle_2_BAS) & ~np.isinf(angle_2_BAS)]*180/np.pi
 
-print('Number of primary fits')
-print('angle_1_PI_filtered shape: ',angle_1_PI_filtered.shape)
-print('angle_1_MPPCA_filtered shape: ',angle_1_MPPCA_filtered.shape)
-print('angle_1_LLR_filtered shape: ',angle_1_LLR_filtered.shape)
-print('angle_1_BAS_filtered shape: ',angle_1_BAS_filtered.shape)
-print('angle_1_DTI_filtered shape: ',angle_1_DTI_filtered.shape)
+# print('Number of primary fits')
+# print('angle_1_PI_filtered shape: ',angle_1_PI_filtered.shape)
+# print('angle_1_MPPCA_filtered shape: ',angle_1_MPPCA_filtered.shape)
+# print('angle_1_LLR_filtered shape: ',angle_1_LLR_filtered.shape)
+# print('angle_1_BAS_filtered shape: ',angle_1_BAS_filtered.shape)
+# print('angle_1_DTI_filtered shape: ',angle_1_DTI_filtered.shape)
 
-print('Number of secondary fits')
-print('angle_2_PI_filtered shape: ',angle_2_PI_filtered.shape)
-print('angle_2_MPPCA_filtered shape: ',angle_2_MPPCA_filtered.shape)
-print('angle_2_LLR_filtered shape: ',angle_2_LLR_filtered.shape)
-print('angle_2_BAS_filtered shape: ',angle_2_BAS_filtered.shape)
-print('angle_2_DTI_filtered shape: ',angle_2_DTI_filtered.shape)
+# print('Number of secondary fits')
+# print('angle_2_PI_filtered shape: ',angle_2_PI_filtered.shape)
+# print('angle_2_MPPCA_filtered shape: ',angle_2_MPPCA_filtered.shape)
+# print('angle_2_LLR_filtered shape: ',angle_2_LLR_filtered.shape)
+# print('angle_2_BAS_filtered shape: ',angle_2_BAS_filtered.shape)
+# print('angle_2_DTI_filtered shape: ',angle_2_DTI_filtered.shape)
 
-# Create Violin plots
+# # Create Violin plots
 
-angles1 = [angle_1_PI_filtered , angle_1_MPPCA_filtered, angle_1_LLR_filtered , angle_1_DTI_filtered , angle_1_BAS_filtered ]  # flatten to 1D
-angles2 = [angle_2_PI_filtered , angle_2_MPPCA_filtered, angle_2_LLR_filtered , angle_2_DTI_filtered , angle_2_BAS_filtered ]  # flatten to 1D
+# angles1 = [angle_1_PI_filtered , angle_1_MPPCA_filtered, angle_1_LLR_filtered , angle_1_DTI_filtered , angle_1_BAS_filtered ]  # flatten to 1D
+# angles2 = [angle_2_PI_filtered , angle_2_MPPCA_filtered, angle_2_LLR_filtered , angle_2_DTI_filtered , angle_2_BAS_filtered ]  # flatten to 1D
 
-data = [angles1, angles2]
-dataNames = ["Angle 1", "Angle 2"]
-plot_colors = ["#FF0000", "#750404","#0000FF", "#00FF00", "#B66700"]
-# Create 2x2 subplot grid
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-axes = axes.flatten()
+# data = [angles1, angles2]
+# dataNames = ["Angle 1", "Angle 2"]
+# plot_colors = ["#FF0000", "#750404","#0000FF", "#00FF00", "#B66700"]
+# # Create 2x2 subplot grid
+# fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+# axes = axes.flatten()
 
-for i, ax in enumerate(axes):
-    parts = ax.violinplot(data[i], showmeans=False, showmedians=True, showextrema=False)
+# for i, ax in enumerate(axes):
+#     parts = ax.violinplot(data[i], showmeans=False, showmedians=True, showextrema=False)
 
-    for l, pc in enumerate(parts['bodies']):
-        pc.set_facecolor(plot_colors[l])
-        pc.set_edgecolor('black')
-        pc.set_alpha(1)
+#     for l, pc in enumerate(parts['bodies']):
+#         pc.set_facecolor(plot_colors[l])
+#         pc.set_edgecolor('black')
+#         pc.set_alpha(1)
 
-    # quartile1, medians, quartile3 = np.percentile(data[i], [25, 50, 75], axis=1)
-    # whiskers = np.array([
-    #     adjacent_values(sorted_array, q1, q3)
-    #     for sorted_array, q1, q3 in zip(data[i], quartile1, quartile3)])
-    # whiskers_min, whiskers_max = whiskers[:, 0], whiskers[:, 1]
-    # inds = np.arange(1, len(medians)+1)
-    # ax.scatter(inds, medians, marker='o', color='white', s=30, zorder=3)
-    # ax.vlines(inds, quartile1, quartile3, color='k', linestyle='-', lw=5)
-    # ax.vlines(inds, whiskers_min, whiskers_max, color='k', linestyle='-', lw=1)
-    # ax.axhline(7)
-    ax.set_xticks([1, 2, 3, 4, 5])
-    ax.set_xticklabels(["PI", "MPPCA", "LLR", "DTI", "BAS"])
-    if i > 1:
-        hline = 0
-        ax.axhline(hline, color='red', linestyle='--', linewidth=2, label=f"GT value")
-    ax.set_title(dataNames[i])
-    ax.set_ylabel("Values")
+#     # quartile1, medians, quartile3 = np.percentile(data[i], [25, 50, 75], axis=1)
+#     # whiskers = np.array([
+#     #     adjacent_values(sorted_array, q1, q3)
+#     #     for sorted_array, q1, q3 in zip(data[i], quartile1, quartile3)])
+#     # whiskers_min, whiskers_max = whiskers[:, 0], whiskers[:, 1]
+#     # inds = np.arange(1, len(medians)+1)
+#     # ax.scatter(inds, medians, marker='o', color='white', s=30, zorder=3)
+#     # ax.vlines(inds, quartile1, quartile3, color='k', linestyle='-', lw=5)
+#     # ax.vlines(inds, whiskers_min, whiskers_max, color='k', linestyle='-', lw=1)
+#     # ax.axhline(7)
+#     ax.set_xticks([1, 2, 3, 4, 5])
+#     ax.set_xticklabels(["PI", "MPPCA", "LLR", "DTI", "BAS"])
+#     if i > 1:
+#         hline = 0
+#         ax.axhline(hline, color='red', linestyle='--', linewidth=2, label=f"GT value")
+#     ax.set_title(dataNames[i])
+#     ax.set_ylabel("Values")
 
-plt.tight_layout()
-plt.savefig(save_dir + 'angle_violins_all.pdf', dpi=300)
-
-
-# Create 2x2 subplot grid
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-axes = axes.flatten()
-
-for i, ax in enumerate(axes):
-    ax.boxplot(data[i], tick_labels=["PI", "MPPCA", "LLR", "DTI", "BAS"])
-    if i > 1:
-        hline = 0
-        ax.axhline(hline, color='red', linestyle='--', linewidth=2, label=f"GT value")
-    ax.set_title(dataNames[i])
-    ax.set_ylabel("Values")
-
-plt.tight_layout()
-plt.savefig(save_dir + 'angle_boxes_all.pdf', dpi=300)
+# plt.tight_layout()
+# plt.savefig(save_dir + 'angle_violins_all.pdf', dpi=300)
 
 
-# Calculate bias
+# # Create 2x2 subplot grid
+# fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+# axes = axes.flatten()
 
-f = h5py.File(dir + r'bootstrap_analysis_PI.h5','r')
-print(f.keys())
-vec1_comb_PI = f['vec1_comb'][:]
-org_vec1 = f['org_vec_1'][:]
-vec2_comb_PI = f['vec2_comb'][:]
-org_vec2 = f['org_vec_2'][:]
-f.close()
-kappa_1_PI, bias_angle_1_PI, angle_95_1_PI = compute_analysis_metrics(vec1_comb_PI, org_vec1)
-kappa_2_PI, bias_angle_2_PI, angle_95_2_PI = compute_analysis_metrics(vec2_comb_PI, org_vec2)
+# for i, ax in enumerate(axes):
+#     ax.boxplot(data[i], tick_labels=["PI", "MPPCA", "LLR", "DTI", "BAS"])
+#     if i > 1:
+#         hline = 0
+#         ax.axhline(hline, color='red', linestyle='--', linewidth=2, label=f"GT value")
+#     ax.set_title(dataNames[i])
+#     ax.set_ylabel("Values")
 
-f = h5py.File(dir + r'bootstrap_analysis_MPPCA.h5','r')
-vec1_comb_MPPCA = f['vec1_comb'][:]
-vec2_comb_MPPCA = f['vec2_comb'][:]
-f.close()
-kappa_1_MPPCA, bias_angle_1_MPPCA, angle_95_1_MPPCA = compute_analysis_metrics(vec1_comb_MPPCA, org_vec1)
-kappa_2_MPPCA, bias_angle_2_MPPCA, angle_95_2_MPPCA = compute_analysis_metrics(vec2_comb_MPPCA, org_vec2)
-
-
-
-f = h5py.File(dir + r'bootstrap_analysis_DTI.h5','r')
-vec1_comb_DTI = f['vec1_comb'][:]
-vec2_comb_DTI = f['vec2_comb'][:]
-f.close()
-kappa_1_DTI, bias_angle_1_DTI, angle_95_1_DTI = compute_analysis_metrics(vec1_comb_DTI, org_vec1)
-kappa_2_DTI, bias_angle_2_DTI, angle_95_2_DTI = compute_analysis_metrics(vec2_comb_DTI, org_vec2)
-
-f = h5py.File(dir + r'bootstrap_analysis_BAS.h5','r')
-vec1_comb_BAS = f['vec1_comb'][:]
-vec2_comb_BAS = f['vec2_comb'][:]
-f.close()
-kappa_1_BAS, bias_angle_1_BAS, angle_95_1_BAS = compute_analysis_metrics(vec1_comb_BAS, org_vec1)
-kappa_2_BAS, bias_angle_2_BAS, angle_95_2_BAS = compute_analysis_metrics(vec2_comb_BAS, org_vec2)
-
-f = h5py.File(dir + r'bootstrap_analysis_LLR.h5','r')
-vec1_comb_LLR = f['vec1_comb'][:]
-vec2_comb_LLR = f['vec2_comb'][:]
-f.close()
-kappa_1_LLR, bias_angle_1_LLR, angle_95_1_LLR = compute_analysis_metrics(vec1_comb_LLR, org_vec1)
-kappa_2_LLR, bias_angle_2_LLR, angle_95_2_LLR = compute_analysis_metrics(vec2_comb_LLR, org_vec2)
+# plt.tight_layout()
+# plt.savefig(save_dir + 'angle_boxes_all.pdf', dpi=300)
 
 # Compute new mask
 
@@ -423,37 +396,85 @@ mask_2_fiber_float_all = mask_2_fiber_all.copy().astype(float)
 mask_1_plus_fiber_float_all[~mask_1_plus_fiber_all] = np.nan
 mask_2_fiber_float_all[~mask_2_fiber_all] = np.nan
 
-# Save bias files
+# Calculate bias
 
-f = h5py.File(save_dir + r'bias_all_slices.h5','w')
-f.create_dataset('Bias_1_PI', data=bias_angle_1_PI*mask_1_plus_fiber_float_all)
-f.create_dataset('Bias_1_MPPCA', data=bias_angle_1_MPPCA*mask_1_plus_fiber_float_all)
-f.create_dataset('Bias_1_LLR', data=bias_angle_1_LLR*mask_1_plus_fiber_float_all)
-f.create_dataset('Bias_1_DTI', data=bias_angle_1_DTI*mask_1_plus_fiber_float_all)
-f.create_dataset('Bias_1_BAS', data=bias_angle_1_BAS*mask_1_plus_fiber_float_all)
-f.create_dataset('Bias_2_PI', data=bias_angle_2_PI*mask_2_fiber_float_all)
-f.create_dataset('Bias_2_MPPCA', data=bias_angle_2_MPPCA*mask_2_fiber_float_all)
-f.create_dataset('Bias_2_LLR', data=bias_angle_2_LLR*mask_2_fiber_float_all)
-f.create_dataset('Bias_2_DTI', data=bias_angle_2_DTI*mask_2_fiber_float_all)
-f.create_dataset('Bias_2_BAS', data=bias_angle_2_BAS*mask_2_fiber_float_all)
-f.close()
+# f = h5py.File(dir + r'bootstrap_analysis_PI.h5','r')
+# print(f.keys())
+# vec1_comb_PI = f['vec1_comb'][:]
+# org_vec1 = f['org_vec_1'][:]
+# vec2_comb_PI = f['vec2_comb'][:]
+# org_vec2 = f['org_vec_2'][:]
+# f.close()
+# kappa_1_PI, bias_angle_1_PI, angle_95_1_PI = compute_analysis_metrics(vec1_comb_PI, org_vec1)
+# kappa_2_PI, bias_angle_2_PI, angle_95_2_PI = compute_analysis_metrics(vec2_comb_PI, org_vec2)
 
-# Save angle 95 files
-f = h5py.File(save_dir + r'angle_95_all_slices.h5','w')
-f.create_dataset('Angle_95_1_PI', data=angle_95_1_PI*mask_1_plus_fiber_float_all)
-f.create_dataset('Angle_95_1_MPPCA', data=angle_95_1_MPPCA*mask_1_plus_fiber_float_all)
-f.create_dataset('Angle_95_1_LLR', data=angle_95_1_LLR*mask_1_plus_fiber_float_all)
-f.create_dataset('Angle_95_1_DTI', data=angle_95_1_DTI*mask_1_plus_fiber_float_all)
-f.create_dataset('Angle_95_1_BAS', data=angle_95_1_BAS*mask_1_plus_fiber_float_all)
-f.create_dataset('Angle_95_2_PI', data=angle_95_2_PI*mask_2_fiber_float_all)
-f.create_dataset('Angle_95_2_MPPCA', data=angle_95_2_MPPCA*mask_2_fiber_float_all)
-f.create_dataset('Angle_95_2_LLR', data=angle_95_2_LLR*mask_2_fiber_float_all)
-f.create_dataset('Angle_95_2_DTI', data=angle_95_2_DTI*mask_2_fiber_float_all)
-f.create_dataset('Angle_95_2_BAS', data=angle_95_2_BAS*mask_2_fiber_float_all)
-f.close()
+# f = h5py.File(save_dir + r'PI_bias_angle_all_slices.h5','w')
+# f.create_dataset('Bias_1_PI', data=bias_angle_1_PI*mask_1_plus_fiber_float_all)
+# f.create_dataset('Bias_2_PI', data=bias_angle_2_PI*mask_2_fiber_float_all)
+# f.create_dataset('Angle_95_1_PI', data=angle_95_1_PI*mask_1_plus_fiber_float_all)
+# f.create_dataset('Angle_95_2_PI', data=angle_95_2_PI*mask_2_fiber_float_all)
+# f.close()
 
-# Load analyzing masks
-mask_dir = r'W:\radiologie\mrt-probanden\AG_Laun\Julius_Glaser\Revision_bipolar\fod\Analyzing_masks\All_slices' + os.sep
+# f = h5py.File(dir + r'bootstrap_analysis_MPPCA.h5','r')
+# vec1_comb_MPPCA = f['vec1_comb'][:]
+# vec2_comb_MPPCA = f['vec2_comb'][:]
+# f.close()
+# kappa_1_MPPCA, bias_angle_1_MPPCA, angle_95_1_MPPCA = compute_analysis_metrics(vec1_comb_MPPCA, org_vec1)
+# kappa_2_MPPCA, bias_angle_2_MPPCA, angle_95_2_MPPCA = compute_analysis_metrics(vec2_comb_MPPCA, org_vec2)
+
+# f = h5py.File(save_dir + r'MPPCA_bias_angle_all_slices.h5','w')
+# f.create_dataset('Bias_1_MPPCA', data=bias_angle_1_MPPCA*mask_1_plus_fiber_float_all)
+# f.create_dataset('Bias_2_MPPCA', data=bias_angle_2_MPPCA*mask_2_fiber_float_all)
+# f.create_dataset('Angle_95_1_MPPCA', data=angle_95_1_MPPCA*mask_1_plus_fiber_float_all)
+# f.create_dataset('Angle_95_2_MPPCA', data=angle_95_2_MPPCA*mask_2_fiber_float_all)
+# f.close()
+
+# f = h5py.File(dir + r'bootstrap_analysis_DTI.h5','r')
+# vec1_comb_DTI = f['vec1_comb'][:]
+# vec2_comb_DTI = f['vec2_comb'][:]
+# f.close()
+# kappa_1_DTI, bias_angle_1_DTI, angle_95_1_DTI = compute_analysis_metrics(vec1_comb_DTI, org_vec1)
+# kappa_2_DTI, bias_angle_2_DTI, angle_95_2_DTI = compute_analysis_metrics(vec2_comb_DTI, org_vec2)
+
+# f = h5py.File(save_dir + r'DTI_bias_angle_all_slices.h5','w')
+# f.create_dataset('Bias_1_DTI', data=bias_angle_1_DTI*mask_1_plus_fiber_float_all)
+# f.create_dataset('Bias_2_DTI', data=bias_angle_2_DTI*mask_2_fiber_float_all)
+# f.create_dataset('Angle_95_1_DTI', data=angle_95_1_DTI*mask_1_plus_fiber_float_all)
+# f.create_dataset('Angle_95_2_DTI', data=angle_95_2_DTI*mask_2_fiber_float_all)
+# f.close()
+
+# f = h5py.File(dir + r'bootstrap_analysis_BAS.h5','r')
+# vec1_comb_BAS = f['vec1_comb'][:]
+# vec2_comb_BAS = f['vec2_comb'][:]
+# f.close()
+# kappa_1_BAS, bias_angle_1_BAS, angle_95_1_BAS = compute_analysis_metrics(vec1_comb_BAS, org_vec1)
+# kappa_2_BAS, bias_angle_2_BAS, angle_95_2_BAS = compute_analysis_metrics(vec2_comb_BAS, org_vec2)
+
+# f = h5py.File(save_dir + r'BAS_bias_angle_all_slices.h5','w')
+# f.create_dataset('Bias_1_BAS', data=bias_angle_1_BAS*mask_1_plus_fiber_float_all)
+# f.create_dataset('Bias_2_BAS', data=bias_angle_2_BAS*mask_2_fiber_float_all)
+# f.create_dataset('Angle_95_1_BAS', data=angle_95_1_BAS*mask_1_plus_fiber_float_all)
+# f.create_dataset('Angle_95_2_BAS', data=angle_95_2_BAS*mask_2_fiber_float_all)
+# f.close()
+
+# f = h5py.File(dir + r'bootstrap_analysis_LLR.h5','r')
+# vec1_comb_LLR = f['vec1_comb'][:]
+# vec2_comb_LLR = f['vec2_comb'][:]
+# org_vec1 = f['org_vec_1'][:]
+# org_vec2 = f['org_vec_2'][:]
+# f.close()
+# kappa_1_LLR, bias_angle_1_LLR, angle_95_1_LLR = compute_analysis_metrics(vec1_comb_LLR, org_vec1)
+# kappa_2_LLR, bias_angle_2_LLR, angle_95_2_LLR = compute_analysis_metrics(vec2_comb_LLR, org_vec2)
+
+# f = h5py.File(save_dir + r'LLR_bias_angle_all_slices.h5','w')
+# f.create_dataset('Bias_1_LLR', data=bias_angle_1_LLR*mask_1_plus_fiber_float_all)
+# f.create_dataset('Bias_2_LLR', data=bias_angle_2_LLR*mask_2_fiber_float_all)
+# f.create_dataset('Angle_95_1_LLR', data=angle_95_1_LLR*mask_1_plus_fiber_float_all)
+# f.create_dataset('Angle_95_2_LLR', data=angle_95_2_LLR*mask_2_fiber_float_all)
+# f.close()
+
+# # Load analyzing masks
+mask_dir = r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF' + os.sep
 
 mask_CC_f = nib.load(mask_dir + r'CorpusCallosum.nii')
 CC_all = mask_CC_f.get_fdata().astype(bool)
@@ -464,15 +485,32 @@ CS_all = crossing_section_f.get_fdata().astype(bool)                         #Cr
 internal_capsule_f = nib.load(mask_dir + r'InternalCapsule.nii')
 IC_all = internal_capsule_f.get_fdata().astype(bool)                              #IC = Internal Capsule
 
-angles1_CC_all, angles2_CC_all = run_statistics_on_angles_masked(dir, CC_all, slice_idx=[12])
+# angles1_CC_all, angles2_CC_all = run_statistics_on_angles_masked(dir, CC_all, slice_idx=list(range(25)))
+file_names = ['bootstrap_analysis_PI.h5', 'bootstrap_analysis_MPPCA.h5', 'bootstrap_analysis_LLR.h5', 'bootstrap_analysis_DTI.h5', 'bootstrap_analysis_BAS.h5']
+angles1_CC_all = []
+angles2_CC_all = []
+for data_file in file_names:
+    print('Processing file: ', data_file)
+    f = h5py.File(dir + data_file,'r')
+    vec1_comb = f['vec1_comb'][:]
+    org_vec1 = f['org_vec_1'][:]
+    vec2_comb = f['vec2_comb'][:]
+    org_vec2 = f['org_vec_2'][:]
+    angles = f['angles'][:]
+    f.close()
+
+    angle_1_filtered_mask, angle_2_filtered_mask = run_statistics_on_angles_masked_single_data(dir, CC_all, vec1_comb, vec2_comb, angles, org_vec1, org_vec2, slice_idx=list(range(25)))
+    angles1_CC_all.append(angle_1_filtered_mask)
+    angles2_CC_all.append(angle_2_filtered_mask)
+
 data = [angles1_CC_all, angles2_CC_all]
 dataNames = ["Angle 1", "Angle 2"]
 
-plot_violins(data, dataNames, save=True, save_dir=save_dir+'angle_violins_CC_all.pdf')
-plot_boxplots(data, dataNames, save=True, save_dir=save_dir+'angle_violins_CC_all.pdf')
+plot_violins(data, dataNames, save=True, save_path=save_dir+'angle_violins_CC_all.pdf')
+plot_boxplots(data, dataNames, save=True, save_path=save_dir+'angle_violins_CC_all.pdf')
 print_stats('CC all mask', data)
 
-angles1_CS_all, angles2_CS_all = run_statistics_on_angles_masked(dir, CS_all, slice_idx=[12])
+angles1_CS_all, angles2_CS_all = run_statistics_on_angles_masked(dir, CS_all, slice_idx=list(range(25)))
 data = [angles1_CS_all, angles2_CS_all]
 dataNames = ["Angle 1", "Angle 2"]
 
@@ -480,10 +518,10 @@ plot_violins(data, dataNames, save=True, save_dir=save_dir+'angle_violins_CS_all
 plot_boxplots(data, dataNames, save=True, save_dir=save_dir+'angle_violins_CS_all.pdf')
 print_stats('CS all mask', data)
 
-angles1_IC_all, angles2_IC_all = run_statistics_on_angles_masked(dir, IC_all, slice_idx=[12])
-data = [angles1_IC_all, angles2_IC_all]
-dataNames = ["Angle 1", "Angle 2"]
+# angles1_IC_all, angles2_IC_all = run_statistics_on_angles_masked(dir, IC_all, slice_idx=list(range(25)))
+# data = [angles1_IC_all, angles2_IC_all]
+# dataNames = ["Angle 1", "Angle 2"]
 
-plot_violins(data, dataNames, save=True, save_dir=save_dir+'angle_violins_IC_all.pdf')
-plot_boxplots(data, dataNames, save=True, save_dir=save_dir+'angle_violins_IC_all.pdf')
-print_stats('IC all mask', data)
+# plot_violins(data, dataNames, save=True, save_dir=save_dir+'angle_violins_IC_all.pdf')
+# plot_boxplots(data, dataNames, save=True, save_dir=save_dir+'angle_violins_IC_all.pdf')
+# print_stats('IC all mask', data)

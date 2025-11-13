@@ -56,6 +56,8 @@ parser.add_argument('--MB', type=int, default=MB,
 parser.add_argument('--slices', type=int, default=N_slices,
                     help='total number of slices.')
 
+parser.add_argument('--part', type=int, default=1,
+                    help='Part.')
 args = parser.parse_args()
 
 N_slices = args.slices
@@ -63,6 +65,7 @@ MB = args.MB
 reco_data_path = args.dir
 name = args.method
 name_to_save = args.out_name
+part = args.part
 
 # raw slice to get sequence parameters
 
@@ -73,7 +76,7 @@ if run_combine_DWI:
     recons_all_slices_dwi = np.zeros((N_diff, N_slices, N_y, N_x), dtype=np.complex64)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_2.h5', 'r')
+        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_'+str(part)+'.h5', 'r')
 
         dwi_data = f['DWI'][:].squeeze()
         f.close()
@@ -94,7 +97,7 @@ if run_combine_latent:
     slice_loop = range(0, maxInd, 1)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_2.h5', 'r')
+        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_'+str(part)+'.h5', 'r')
         dwi_data = f['DWI_latent'][:].squeeze()
         f.close()
         # print(dwi_data.shape)

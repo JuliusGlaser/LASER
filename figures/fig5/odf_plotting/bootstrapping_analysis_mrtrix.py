@@ -463,6 +463,8 @@ def main():
 
     path_to_data = config['path_to_data']
     path_to_data = normalize_path(path_to_data)
+    path_to_latent = config['path_to_latent']
+    path_to_latent = normalize_path(path_to_latent)
     dictionary = config['dictionary']
     data_dict = {key: {'data':None,'FA':None} for key in dictionary}
     # dictionary = {'muse': 'MuseRecon_combined_slices', 'llr': 'JETS2', 'dec':'DecRecon_combined_slices','DTI': 'DecRecon_combined_slices'}
@@ -539,8 +541,8 @@ def main():
             # peaks_dirs_GT = peaks_dirs_GT.reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3], org_shape[4]))
             print(data_key)
             print('>> start bootstrapping')
-            data1 = load_data_bootstrap(data_key, path_to_data, dictionary, odf_calc, orientationDict, n='1')
-            data2 = load_data_bootstrap(data_key, path_to_data, dictionary, odf_calc, orientationDict, n='2')
+            data1 = load_data_bootstrap(data_key, path_to_latent, dictionary, odf_calc, orientationDict, n='1')
+            data2 = load_data_bootstrap(data_key, path_to_latent, dictionary, odf_calc, orientationDict, n='2')
             data_joint = np.stack((data1, data2), axis=-1)  
             
             angles = np.zeros((org_shape[0], org_shape[1], org_shape[2], N_bootstrap, num_fiber))

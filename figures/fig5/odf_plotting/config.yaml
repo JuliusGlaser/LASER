@@ -1,11 +1,13 @@
 path_to_data: /home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/
+path_to_latent: /home/vault/mfqb/mfqb102h/LASER_bipolar_revision/kdat_us3/LASER/
 dictionary:
   GT: "GT_PF_PEAKS"
   # PI: "PI_comb_PF_us3_1"
   # MPPCA: MPPCA_denoised_PF_us3_1
-  DTI: "DTI_PF_us3_comb_1"
+  # DTI: "DTI_PF_us3_comb_1"
   # LLR: "LLR_PF_us3_l_1_comb_1"
   # BAS: "BAS_PF_us3_comb_1"
+  VAE_BAS_samples_60: VAE_BAS_samples_60_comb_part1
 N_x: &N_x 110
 N_y: &N_y 110
 N_z: &N_z 26
@@ -56,5 +58,5 @@ plot_joint_fig: True
 
 num_fiber: 2
 remove_bootstrap_data: True
-N_bootstrap: 1000
-bootstrap_dir_name: bootstraps_1000_slice_all_PF
+N_bootstrap: 100
+bootstrap_dir_name: bootstraps_100_slice_all_Samples_variations
