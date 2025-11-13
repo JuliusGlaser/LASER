@@ -84,7 +84,9 @@ def train(network_parameters: NP,
         # denoise inputs, and calculate loss
         if network_parameters.model == 'DAE':
             recon_t = model(noisy_t)
-            loss = loss_function(recon_t, clean_t)
+            recon_t_scaled = recon_t*scalingMatrix
+            clean_t_scaled = clean_t*scalingMatrix
+            loss = loss_function(recon_t_scaled, clean_t_scaled)
         elif network_parameters.model == 'VAE':
             recon_t, mu, logvar = model(noisy_t)
             k = (2*N_diff/network_parameters.latent)**2
@@ -250,7 +252,7 @@ def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array]:
     bvals = f['bvals'][:]
     bvecs = f['bvecs'][:]
     scalingMatrix = np.ones(bvals.shape)
-    # scalingMatrix = scalingMatrix * bvals/1000
+    scalingMatrix = scalingMatrix * 1/bvals
     f.close()
 
     #b0 values don't have to be learned, therefore mask is created
