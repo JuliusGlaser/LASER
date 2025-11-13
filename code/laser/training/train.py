@@ -84,7 +84,13 @@ def train(network_parameters: NP,
         # denoise inputs, and calculate loss
         if network_parameters.model == 'DAE':
             recon_t = model(noisy_t)
-            loss = loss_function(recon_t, clean_t)
+            loss = loss_function( torch.log(recon_t), torch.log(clean_t))
+            if epoch==1:
+                print('>> Using log loss for DAE training')
+                print(recon_t)
+                print(torch.log(recon_t))
+                print(loss_function( torch.log(recon_t), torch.log(clean_t)))
+                print(loss_function(recon_t,clean_t))
         elif network_parameters.model == 'VAE':
             recon_t, mu, logvar = model(noisy_t)
             k = (2*N_diff/network_parameters.latent)**2
