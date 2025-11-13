@@ -102,13 +102,14 @@ class DAE(nn.Module):
     """
     def __init__(self,
                  b0_mask,
-                 input_features: int = 81,
-                 latent_features: int = 15,
+                 input_features: int = 126,
+                 latent_features: int = 11,
                  depth: int = 4,
                  activ_fct_str='Tanh',
                  encoder_features: List[int] = None,
                  device = 'cpu',
-                 reco = False):
+                 reco = False,
+                 decoder_out_features: tuple[int, int, int] = (22, 33, 71)):
 
         super(DAE, self).__init__()
 
@@ -117,53 +118,95 @@ class DAE(nn.Module):
 
         activ_fct = _get_activ_fct(activ_fct_str)
 
-        # if encoder_features is None:
-
-        #     encoder_features = torch.linspace(start=input_features, end=latent_features, steps=depth+1).type(torch.int64)
-
-        # else:
-
-        #     encoder_features = torch.tensor(encoder_features)
-
-        # #     assert(depth == len(encoder_features))
-
-
-        # decoder_features = torch.flip(encoder_features, dims=(0, ))
+        # ---------- ENCODER ----------
+        encoder_module = []
 
         encoder_features = torch.linspace(start=input_features,
                                           end=latent_features,
                                           steps=depth+1).type(torch.int64)
-        decoder_features = torch.flip(encoder_features, dims=(0, ))
-
 
         for d in range(depth):
+            in_f  = encoder_features[d]
+            out_f = encoder_features[d+1]
+
             if d == 0 and b0_mask is not None:
-                encoder_module.append(CustomLinearEnc(encoder_features[d], encoder_features[d+1], b0_mask, device))
+                encoder_module.append(CustomLinearEnc(in_f, out_f, b0_mask, device))
             else:
-                encoder_module.append(nn.Linear(encoder_features[d], encoder_features[d+1]))
+                encoder_module.append(nn.Linear(in_f, out_f))
+
             encoder_module.append(activ_fct)
-            
-            if d < (depth - 1):
-                decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
-                decoder_module.append(activ_fct)
-            else:
-                decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
-                decoder_module.append(nn.Sigmoid())
 
         self.encoder_seq = nn.Sequential(*encoder_module)
-        self.decoder_seq = nn.Sequential(*decoder_module)
+
+        # ---------- DECODER BRANCHES (3 heads: 22, 33, 71) ----------
+        self.decoders = nn.ModuleList()
+        self.decoder_out_features = decoder_out_features
+
+        for final_out in decoder_out_features:
+            layers = []
+
+            # latent_features -> ... -> final_out
+            branch_features = torch.linspace(start=latent_features,
+                                             end=final_out,
+                                             steps=depth+1).type(torch.int64)
+
+            for d in range(depth):
+                in_f  = branch_features[d]
+                out_f = branch_features[d+1]
+
+                layers.append(nn.Linear(in_f, out_f))
+
+                # activation after all but last layer
+                if d < depth - 1:
+                    layers.append(activ_fct)
+
+            # note: NO Sigmoid here; we keep heads linear at the end
+            self.decoders.append(nn.Sequential(*layers))
+
+        # ---------- FINAL CUSTOM LAYER ----------
+        total_branch_out = sum(decoder_out_features)  # 22 + 33 + 71 = 126
+
+        # This custom layer consumes [22 | 33 | 71] concatenated and reconstructs input_features
+        self.final_dec = CustomLinearDec(
+            total_branch_out,
+            input_features,
+            b0_mask,
+            device,
+            reco=reco
+        )
+        self.final_activation = nn.Sigmoid()
 
     def encode(self, x):
         return self.encoder_seq(x)
 
-    def decode(self, x):
-        return self.decoder_seq(x)
+    def decode_branches(self, z):
+        """
+        Runs the 3 separate decoder branches.
+        Returns a list: [out_22, out_33, out_71]
+        """
+        return [dec(z) for dec in self.decoders]
+
+    def decode(self, z):
+        """
+        Uses the 3 branches, concatenates their outputs, and applies the final custom layer.
+        Returns:
+          x_recon: final reconstruction (size input_features)
+          branch_outs: list [out_22, out_33, out_71]
+        """
+        branch_outs = self.decode_branches(z)        # list of tensors
+        concat = torch.cat(branch_outs, dim=-1)      # shape: (batch, 22+33+71)
+
+        x_recon = self.final_dec(concat)
+        x_recon = self.final_activation(x_recon)     # keep Sigmoid as in original
+
+        return x_recon, branch_outs
 
     def forward(self, x):
-        latent = self.encode(x)
-        output = self.decode(latent)
-
-        return output
+        z = self.encode(x)
+        x_recon, _ = self.decode(z)
+        # x_recon: reconstructed full output (81)
+        # branch_outs: [22, 33, 71] parts if you want to use them in the loss
+        return x_recon
 
 class VAE(nn.Module):
     """

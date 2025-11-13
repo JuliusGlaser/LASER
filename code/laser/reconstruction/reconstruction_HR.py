@@ -127,7 +127,8 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Z = number of acquired slices
     Q = number of diffusion directions
     '''
-    out = model.decode(x_1)
+    out, _ = model.decode(x_1)
+    
     out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
@@ -795,7 +796,7 @@ def main():
 
         for param in model.parameters():
             param.requires_grad = False
-        model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
+        model.final_dec.linear.bias[b0_mask==False] = 40
 
         # Calculate yshift of MB acquisition
         yshift = []
@@ -1012,7 +1013,7 @@ def main():
             phase = phase.detach().cpu().numpy()
             phase = np.reshape(phase, (MB, N_y, N_x, N_diff))
             decFile.create_dataset('DWI_phase', data=phase)  
-            dec_out = model.decode(x_1)
+            dec_out, _ = model.decode(x_1)
             dec_out = dec_out.detach().cpu().numpy()
             dec_out = np.reshape(dec_out, (MB, N_y, N_x, N_diff))
             decFile.create_dataset('latent_decoded', data=dec_out)
