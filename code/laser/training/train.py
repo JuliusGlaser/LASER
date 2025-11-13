@@ -13,6 +13,7 @@ import os
 import sys
 import yaml
 import torch
+import torch.nn as nn
 import numpy as np
 import torch.utils.data as data
 from yaml import Loader
@@ -28,6 +29,31 @@ from laser.training.util_classes import Network_parameters as NP
 from torch.utils.tensorboard import SummaryWriter
 
 np.random.seed(42)
+
+class X4Loss(nn.Module):
+    """
+    Custom loss: mean of (y_pred - y_true)^4
+    """
+    def __init__(self, reduction='mean'):
+        super(X4Loss, self).__init__()
+        if reduction not in ('mean', 'sum', 'none'):
+            raise ValueError("reduction must be 'mean', 'sum', or 'none'")
+        self.reduction = reduction
+
+    def forward(self, y_pred, y_true):
+        # Ensure both tensors are float and same shape
+        if y_pred.shape != y_true.shape:
+            raise ValueError("y_pred and y_true must have the same shape")
+        
+        diff = y_pred - y_true
+        loss = diff ** 4  # element-wise fourth power
+
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        else:  # 'none'
+            return loss
 
 def train(network_parameters: NP, 
           loader_train: data.DataLoader, 
@@ -392,7 +418,8 @@ def main():
     device = NetworkParameters.selectDevice()
     model = NetworkParameters.createModel(b0_mask, N_diff, device)
     loader_train, loader_test = create_data_loader(x_clean, original_D, NetworkParameters)
-    loss_function = NetworkParameters.selectLoss()
+    # loss_function = NetworkParameters.selectLoss()
+    loss_function = X4Loss()
     optimizer = NetworkParameters.selectOptimizer(model)
     Losses = LC(NetworkParameters.model)
 
@@ -420,3 +447,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
