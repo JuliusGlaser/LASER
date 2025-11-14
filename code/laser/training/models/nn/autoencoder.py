@@ -235,7 +235,90 @@ class VAE(nn.Module):
         return self.decode(z), mu, logvar
 
 
+class Shell_DAE(nn.Module):
+    """
+    Denoising AutoEncoder
+    """
+    def __init__(self,
+                 b0_mask,
+                 input_features: int = 126,
+                 latent_features: int = 11,
+                 depth: int = 4,
+                 activ_fct_str='Tanh',
+                 encoder_features: List[int] = None,
+                 device = 'cpu',
+                 reco = False):
 
+        super(DAE, self).__init__()
+
+        shell1 = 22
+        shell2 = 33
+        shell3 = 71
+
+        shells = [shell1, shell2, shell3]
+
+        encoder_module1 = []
+        encoder_module2 = []
+        encoder_module3 = []
+
+        enc_mods = [encoder_module1, encoder_module2, encoder_module3]
+
+        decoder_module1 = []
+        decoder_module2 = []
+        decoder_module3 = []
+        dec_mods = [decoder_module1, decoder_module2, decoder_module3]
+
+        activ_fct = _get_activ_fct(activ_fct_str)
+
+        # if encoder_features is None:
+
+        #     encoder_features = torch.linspace(start=input_features, end=latent_features, steps=depth+1).type(torch.int64)
+
+        # else:
+
+        #     encoder_features = torch.tensor(encoder_features)
+
+        # #     assert(depth == len(encoder_features))
+
+
+        # decoder_features = torch.flip(encoder_features, dims=(0, ))
+
+        for i in range(3):
+            encoder_features = torch.linspace(start=shells[i],
+                                            end=latent_features,
+                                            steps=depth+1).type(torch.int64)
+            decoder_features = torch.flip(encoder_features, dims=(0, ))
+
+
+            for d in range(depth):
+                if d == 0 and b0_mask is not None:
+                    encoder_module.append(CustomLinearEnc(encoder_features[d], encoder_features[d+1], b0_mask, device))
+                else:
+                    encoder_module.append(nn.Linear(encoder_features[d], encoder_features[d+1]))
+                encoder_module.append(activ_fct)
+                
+                if d < (depth - 1):
+                    decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
+                    decoder_module.append(activ_fct)
+                else:
+                    decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
+                    decoder_module.append(nn.Sigmoid())
+
+            self.encoder_seq = nn.Sequential(*encoder_module)
+            self.decoder_seq = nn.Sequential(*decoder_module)
+
+    def encode(self, x):
+        return self.encoder_seq(x)
+
+    def decode(self, x):
+        return self.decoder_seq(x)
+
+    def forward(self, x):
+        latent = self.encode(x)
+        output = self.decode(latent)
+
+        return output
+    
 def loss_function_mse(recon, orig):
     loss = F.mse_loss(recon, orig)
 

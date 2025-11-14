@@ -884,7 +884,7 @@ def main():
 
             criterion   = nn.MSELoss(reduction='sum')
 
-            iterations  = 150
+            iterations  = 50
             print('>> b0 estimation')
             for iter in range(iterations):
                 optimizer.zero_grad()
