@@ -7,7 +7,7 @@ dictionary:
   # DTI: "DTI_PF_us3_comb_1"
   # LLR: "LLR_PF_us3_l_1_comb_1"
   # BAS: "BAS_PF_us3_comb_1"
-  VAE_BAS_samples_60: VAE_BAS_samples_60_comb_part1
+  DAE_BAS_baseline_unscaled: DAE_BAS_baseline_no_scale_PF_comb_part1
 N_x: &N_x 110
 N_y: &N_y 110
 N_z: &N_z 26
@@ -20,7 +20,7 @@ orientation_dict:
 areas_dict:
   MSMT_high_res_sphere_slice_10_own_rf_each_bs:
     orientation: "tra"
-    slice_ind: [1,26]
+    slice_ind: [10,14]
     matlab_area_TL: [110, 1] # y, x
     matlab_area_DR: [1, 110]
     # matlab_area_TL: [105, 18] # y, x
@@ -59,4 +59,4 @@ plot_joint_fig: True
 num_fiber: 2
 remove_bootstrap_data: True
 N_bootstrap: 100
-bootstrap_dir_name: bootstraps_100_slice_all_Samples_variations
+bootstrap_dir_name: bootstraps_100_slice_10_14_PF_new_reco  

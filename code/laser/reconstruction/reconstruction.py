@@ -963,6 +963,11 @@ def main():
 
             iterations  = 300
             loss_values = []
+            scaler = torch.tensor((bvals[:, np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis]), device=deviceDec)
+            scaler[bvals==1000,...] = 1
+            scaler[bvals==2000,...] = 1
+            scaler[bvals==3000,...] = 1
+            scaler[bvals==0,...] = 1
 
             print('\nfull diffusion estimation\n')
             for iter in range(iterations):
@@ -979,7 +984,7 @@ def main():
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                     x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
+                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:])*scaler,torch.view_as_real(x_masked)*scaler) 
 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 

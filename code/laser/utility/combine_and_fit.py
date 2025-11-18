@@ -14,7 +14,7 @@ import argparse
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Build the path to config.yaml in the same folder as the script
-config_path = os.path.join(script_dir, "config.yaml")
+config_path = os.path.join(script_dir, "config_LR.yaml")
 
 stream = open(config_path, 'r')
 config = yaml.load(stream, Loader)
