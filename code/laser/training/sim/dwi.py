@@ -204,7 +204,7 @@ def model_DTI(b: np.array, g: np.array, b0_threshold: int, diff_samples: int, N_
     return np.array(signals), np.array(evecs_res)
 
 def model_BAS(b: np.array, g: np.array, b0_threshold: int, N_samples: int = 10,
-              diffusivity: tuple[float, float, float]=(0.0001    , 3E-3, 10)
+              diffusivity: tuple[float, float, float]=(0.001    , 3E-3, 10)
               ) -> tuple[np.array, np.array]:
     """
     Simulation of DTI model data.
@@ -281,7 +281,7 @@ def get_fractions(nSteps: int=3)->np.array:
         except:
             fraction_array = fraction_array2
         ball_size += stepsize
-    return fraction_array
+    return fraction_array[0:nSteps]
 
 def sample_from_unit_sphere(n: int)->np.array:
     """
