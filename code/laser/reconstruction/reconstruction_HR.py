@@ -672,6 +672,7 @@ def main():
     parser.add_argument("--part", type=int, default=1)
     parser.add_argument('--us', type=int, default=2)
     parser.add_argument('--lat', type=int, default=7) #FIXME: remove if not needed
+    parser.add_argument('--scaling', action='store_true', help="Use scaling in reconstruction") #FIXME: remove if not needed
 
   
 
@@ -682,7 +683,7 @@ def main():
     save_dir = save_dir + os.sep
     data_dir = data_dir + os.sep
 
-    # modelPath       = modelPath + str(args.lat) + os.sep #FIXME: remove if not needed
+    modelPath       = modelPath + str(args.lat) + os.sep #FIXME: remove if not needed
 
     print('>> Following reconstructions are run (if True):')
     print('>> Muse reconstruction: ',muse_recon)
@@ -940,7 +941,11 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            if args.scaling:
+                scale_str = '_scaling'
+            else:
+                scale_str = '_no_scale'
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_lat' + str(args.lat)+ scale_str +'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -1046,10 +1051,16 @@ def main():
             iterations  = 150
             loss_values = []
             scaler = torch.tensor((bvals[:, np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis]), device=deviceDec)
-            scaler[bvals==1000,...] = 9
-            scaler[bvals==2000,...] = 3
-            scaler[bvals==3000,...] = 1
-            scaler[bvals==0,...] = 1
+            if args.scaling:
+                scaler[bvals==1000,...] = 3
+                scaler[bvals==2000,...] = 1.5
+                scaler[bvals==3000,...] = 1
+                scaler[bvals==0,...] = 1
+            else:
+                scaler[bvals==1000,...] = 1
+                scaler[bvals==2000,...] = 1
+                scaler[bvals==3000,...] = 1
+                scaler[bvals==0,...] = 1
             # print(scaler)
             # print(scaler.shape)
 
