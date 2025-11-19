@@ -128,11 +128,17 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Q = number of diffusion directions
     '''
     out = model.decode(x_1)
-    out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
-    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
-    out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
+    # print('out shape before scaling: ', out.shape)
+    # print('b0 shape: ', b0.shape)
+    # print('phase shape: ', phase.shape)
+    # print(N_z,N_y, N_x,Q)
+    out = (out *torch.exp(1j*phase))
+    out_scaled = out * b0
+    out_scaled_reshaped = out_scaled.reshape(N_z,N_y, N_x,Q)
+    out_scaled_reshaped = out_scaled_reshaped.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
+    out_scaled_reshaped = torch.reshape(out_scaled_reshaped, (Q,1,1,N_z,N_y,N_x))
 
-    return out_scaled
+    return out_scaled_reshaped, out
 
 def Multi_shot_for(x:torch.Tensor, phase:torch.Tensor)->torch.Tensor:
     '''
@@ -633,6 +639,40 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
 
+def dae_reg(model: torch.nn.Module, dwiData: torch.Tensor, normalizedData: torch.Tensor, b0: torch.Tensor)->tuple[torch.nn.MSELoss, torch.Tensor]:
+    '''
+    #TODO: UPDATE
+    filters the DWI data using VAE and calculates loss
+        
+    Args:
+        model (torch.nn.Module): loaded VAE model
+        dwiData (torch.Tensor): diffusion data
+    
+    Returns:
+        torch.nn.MSELoss: Loss between original DWI data and VAE filtered DWI data
+        torch.Tensor: VAE filtered DWI data
+    '''
+    N_diff,_,_,N_z,N_y,N_x = dwiData.shape
+    dwi_scaled_mag = abs(normalizedData).float()
+    dwi_scaled_phs = torch.angle(normalizedData).reshape(N_diff, 1,1, N_z, N_y, N_x)
+
+    
+    inputData = dwi_scaled_mag.reshape(N_diff,N_z*N_x*N_y)
+    inputData = inputData.T
+
+
+    with torch.no_grad():
+        filteredData = model(inputData)
+
+    filteredData = filteredData.T
+    filteredData = filteredData.reshape(N_diff, 1,1, N_z, N_y, N_x)
+    b0 = b0.reshape(N_z,N_y,N_x,1)
+    b0 = b0.permute(-1, 0, 1, -2)
+    b0 = b0.view(1,1,1,N_z,N_y, N_x)
+    filteredData = filteredData * b0 * torch.exp(1j*dwi_scaled_phs)
+    criterion   = nn.MSELoss(reduction='sum')
+    
+    return criterion(torch.view_as_real(dwiData), torch.view_as_real(filteredData)), filteredData
 
 def main():
 
@@ -668,6 +708,7 @@ def main():
     parser.add_argument("--part", type=int, default=1)
     parser.add_argument('--us', type=int, default=2)
     parser.add_argument('--lat', type=int, default=7) #FIXME: remove if not needed
+    parser.add_argument('--scaling', action='store_true', help="Use scaling in reconstruction") #FIXME: remove if not needed
 
   
 
@@ -678,7 +719,6 @@ def main():
     save_dir = save_dir + os.sep
     data_dir = data_dir + os.sep
 
-    # modelPath       = modelPath + str(args.lat) + os.sep #FIXME: remove if not needed
 
     print('>> Following reconstructions are run (if True):')
     print('>> Muse reconstruction: ',muse_recon)
@@ -797,6 +837,81 @@ def main():
             param.requires_grad = False
         model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
 
+        #SHELL SPECIFIC MODELS
+
+        f = h5py.File(r'/home/hpc/mfqb/mfqb102h/LASER/data/raw/1.0mm_126-dir_R3x3_dvs.h5', 'r') #TODO: revert hardcoding
+        bvals1 = f['bvals'][0:22]
+        bvecs1 = f['bvecs'][0:22]
+        bvals2 = f['bvals'][22:55]
+        bvecs2 = f['bvecs'][22:55]
+        bvals3 = f['bvals'][55:126]
+        bvecs3 = f['bvecs'][55:126]
+        f.close()
+
+        # load model config of used AE and prepare it for reconstruction
+        modelPath_shell1 = '/home/hpc/mfqb/mfqb102h/LASER/code/laser/training/trained_data/BAS_shell_1/' #TODO: revert hardcoding
+        stream1 = open(modelPath_shell1 + 'config.yaml', 'r')
+        modelConfig1 = yaml.load(stream1, Loader)
+        modelType1 = modelConfig1['model']
+        model_depth1 = modelConfig1['depth']
+        N_latent1 = modelConfig1['latent']
+        model_activ_fct1 = modelConfig1['activation_fct']
+        samples = modelConfig1['sphere_samples']
+        b0_mask1 = None
+        N_diff1 = 22  #number of directions in shell 1
+        if modelConfig1['mask_usage']:
+            b0_mask1 = bvals1 > 50
+        
+        model1 = ae_dict[modelType1](b0_mask=b0_mask1, input_features=N_diff1, latent_features=N_latent1, depth=model_depth1, activ_fct_str=model_activ_fct1, device=deviceDec, reco=True).to(deviceDec)
+        model1.load_state_dict(torch.load(modelPath_shell1 + 'train_'+modelType1+'_Latent' +str(N_latent1).zfill(2) + 'final.pt', map_location=torch.device(deviceDec)))
+        
+        model1 = model1.float()
+
+        for param in model1.parameters():
+            param.requires_grad = False
+        model1.decoder_seq[-2].linear.bias[b0_mask1==False] = 40
+
+        ##SHELL 2
+        modelPath_shell2 = '/home/hpc/mfqb/mfqb102h/LASER/code/laser/training/trained_data/DAE_BAS_shell_2/' #TODO: revert hardcoding
+        stream2 = open(modelPath_shell2 + 'config.yaml', 'r')
+        modelConfig2 = yaml.load(stream2, Loader)
+        modelType2 = modelConfig2['model']
+        model_depth2 = modelConfig2['depth']
+        N_latent2 = modelConfig2['latent']
+        model_activ_fct2 = modelConfig2['activation_fct']
+        samples = modelConfig2['sphere_samples']
+        b0_mask2 = None
+        N_diff2 = 33  #number of directions in shell 2
+        if modelConfig2['mask_usage']:
+            b0_mask2 = bvals2 > 50
+        model2 = ae_dict[modelType2](b0_mask=b0_mask2, input_features=N_diff2, latent_features=N_latent2, depth=model_depth2, activ_fct_str=model_activ_fct2, device=deviceDec, reco=True).to(deviceDec)
+        model2.load_state_dict(torch.load(modelPath_shell2 + 'train_'+modelType2+'_Latent' +str(N_latent2).zfill(2) + 'final.pt', map_location=torch.device(deviceDec)))
+
+        model2 = model2.float()
+        for param in model2.parameters():
+            param.requires_grad = False
+        model2.decoder_seq[-2].linear.bias[b0_mask2==False] = 40
+
+        ##SHELL 3
+        modelPath_shell3 = '/home/hpc/mfqb/mfqb102h/LASER/code/laser/training/trained_data/DAE_BAS_shell_3/' #TODO: revert hardcoding
+        stream3 = open(modelPath_shell3 + 'config.yaml', 'r')
+        modelConfig3 = yaml.load(stream3, Loader)
+        modelType3 = modelConfig3['model']
+        model_depth3 = modelConfig3['depth']
+        N_latent3 = modelConfig3['latent']
+        model_activ_fct3 = modelConfig3['activation_fct']
+        samples = modelConfig3['sphere_samples']
+        b0_mask3 = None
+        N_diff3 = 71  #number of directions in shell 3
+        if modelConfig3['mask_usage']:
+            b0_mask3 = bvals3 > 50
+        model3 = ae_dict[modelType3](b0_mask=b0_mask3, input_features=N_diff3, latent_features=N_latent3, depth=model_depth3, activ_fct_str=model_activ_fct3, device=deviceDec, reco=True).to(deviceDec)    
+        model3.load_state_dict(torch.load(modelPath_shell3 + 'train_'+modelType3+'_Latent' +str(N_latent3).zfill(2) + 'final.pt', map_location=torch.device(deviceDec)))
+        model3 = model3.float()
+        for param in model3.parameters():
+            param.requires_grad = False
+        model3.decoder_seq[-2].linear.bias[b0_mask3==False] = 40
+
         # Calculate yshift of MB acquisition
         yshift = []
         for b in range(MB):
@@ -861,7 +976,11 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            if args.scaling:
+                scale_str = '_scaling'
+            else:
+                scale_str = '_no_scale'
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + scale_str +'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -884,7 +1003,7 @@ def main():
 
             criterion   = nn.MSELoss(reduction='sum')
 
-            iterations  = 150
+            iterations  = 50
             print('>> b0 estimation')
             for iter in range(iterations):
                 optimizer.zero_grad()
@@ -952,7 +1071,7 @@ def main():
             phase = torch.permute(phase, (1,0)).detach()  #(MB*Nx*Ny, N_diff)
             phase = phase.to(deviceDec)
             x_1.requires_grad  = True
-            
+
             # use reconstructed b0 as initialization for scaling image
             b0 = abs(b0[:,0:1]).to(deviceDec)
             b0.requires_grad  = True
@@ -964,8 +1083,21 @@ def main():
 
             criterion   = nn.MSELoss(reduction='sum')
 
-            iterations  = 300
+            iterations  = 150
             loss_values = []
+            scaler = torch.tensor((bvals[:, np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis]), device=deviceDec)
+            if args.scaling:
+                scaler[bvals==1000,...] = 3
+                scaler[bvals==2000,...] = 1.5
+                scaler[bvals==3000,...] = 1
+                scaler[bvals==0,...] = 1
+            else:
+                scaler[bvals==1000,...] = 1
+                scaler[bvals==2000,...] = 1
+                scaler[bvals==3000,...] = 1
+                scaler[bvals==0,...] = 1
+            # print(scaler)
+            # print(scaler.shape)
 
             print('\nfull diffusion estimation\n')
             for iter in range(iterations):
@@ -976,18 +1108,22 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
+                    x, x_norm= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
                     x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                     x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
+                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:])*scaler,torch.view_as_real(x_masked)*scaler) 
+                    
 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
                     # if iter > 1:
+                    dae_reg_loss, filtered_dwi = dae_reg(model, dwi, x_norm, b0)
+                    loss += 0.01*dae_reg_loss
                     loss += loss_of_tv
+                    
                 loss.backward()
                 optimizer2.step()
                 optimizer.step()
@@ -1007,7 +1143,7 @@ def main():
             lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
+            x, _= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
             decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy())) 
             phase = phase.detach().cpu().numpy()
             phase = np.reshape(phase, (MB, N_y, N_x, N_diff))
