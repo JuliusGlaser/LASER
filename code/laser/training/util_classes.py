@@ -47,6 +47,7 @@ class Network_parameters:
         self.device = config['device']
         self.test_epoch_step = config['test_epoch_step']
         self.dvs_file_path = config['dvs_file_path']
+        self.encoder_features = config['encoder_features']
 
         self.acquisition_dir = acquisition_dir
         self.tested_once = False
@@ -63,9 +64,10 @@ class Network_parameters:
         returns:
             torch.nn.Module: neural network, inherited from nn.Module and defined in ae
         """
+        print('encoder_features: ', self.encoder_features)
         ae_dict = {'DAE':ae.DAE, 
                    'VAE':ae.VAE}
-        return ae_dict[self.model](b0_mask, input_features=inputFeatures, latent_features=self.latent, device=device,depth=self.depth, activ_fct_str=self.activ_fct).to(device)
+        return ae.DAE_2_shell(b0_mask, input_features=inputFeatures, latent_features=self.latent, device=device,depth=self.depth, activ_fct_str=self.activ_fct, encoder_features=self.encoder_features).to(device)
 
     def selectLoss(self)->torch.nn.modules.loss:
         """

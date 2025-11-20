@@ -19,6 +19,11 @@ from torch.nn import functional as F
 
 from typing import List
 
+import yaml
+from yaml import Loader
+import h5py
+import os
+
 def _get_activ_fct(activ_fct:str):
     if activ_fct == 'ReLU':
         res_fct = nn.ReLU(True)
@@ -108,7 +113,8 @@ class DAE(nn.Module):
                  activ_fct_str='Tanh',
                  encoder_features: List[int] = None,
                  device = 'cpu',
-                 reco = False):
+                 reco = False,
+                 latent_space = None):
 
         super(DAE, self).__init__()
 
@@ -130,9 +136,14 @@ class DAE(nn.Module):
 
         # decoder_features = torch.flip(encoder_features, dims=(0, ))
 
-        encoder_features = torch.linspace(start=input_features,
-                                          end=latent_features,
-                                          steps=depth+1).type(torch.int64)
+        if encoder_features is None:
+            encoder_features = torch.linspace(start=input_features,
+                                            end=latent_features,
+                                            steps=depth+1).type(torch.int64)
+        else:
+            print('encoder_features in train: ', encoder_features)
+            encoder_features = torch.tensor(encoder_features)
+        depth = len(encoder_features) - 1
         decoder_features = torch.flip(encoder_features, dims=(0, ))
 
 
@@ -143,15 +154,161 @@ class DAE(nn.Module):
                 encoder_module.append(nn.Linear(encoder_features[d], encoder_features[d+1]))
             encoder_module.append(activ_fct)
             
+
+            
             if d < (depth - 1):
-                decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
-                decoder_module.append(activ_fct)
+                if d == 0 and latent_space is not None:
+                    decoder_module.append(latent_space)
+                    for param in latent_space.parameters():
+                        param.requires_grad = False
+                    decoder_module.append(activ_fct)
+                elif d==0 and latent_space is None:
+                    decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
+                    decoder_module.append(activ_fct)
+                else:
+                    decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
+                    decoder_module.append(activ_fct)
             else:
                 decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
                 decoder_module.append(nn.Sigmoid())
 
         self.encoder_seq = nn.Sequential(*encoder_module)
         self.decoder_seq = nn.Sequential(*decoder_module)
+
+    def encode(self, x):
+        return self.encoder_seq(x)
+
+    def decode(self, x):
+        return self.decoder_seq(x)
+
+    def forward(self, x):
+        latent = self.encode(x)
+        output = self.decode(latent)
+
+        return output
+
+class DAE_2_shell(nn.Module):
+    """
+    Denoising AutoEncoder
+    """
+    def __init__(self,
+                 b0_mask,
+                 input_features: int = 81,
+                 latent_features: int = 15,
+                 depth: int = 4,
+                 activ_fct_str='Tanh',
+                 encoder_features: List[int] = None,
+                 device = 'cpu',
+                 reco = False,
+                 latent_space = None):
+
+        super(DAE_2_shell, self).__init__()
+
+        encoder_module = []
+        decoder_module = []
+
+        activ_fct = _get_activ_fct(activ_fct_str)
+
+        # if encoder_features is None:
+
+        #     encoder_features = torch.linspace(start=input_features, end=latent_features, steps=depth+1).type(torch.int64)
+
+        # else:
+
+        #     encoder_features = torch.tensor(encoder_features)
+
+        # #     assert(depth == len(encoder_features))
+
+
+        # decoder_features = torch.flip(encoder_features, dims=(0, ))
+
+        if encoder_features is None:
+            encoder_features = torch.linspace(start=input_features,
+                                            end=latent_features,
+                                            steps=depth+1).type(torch.int64)
+        else:
+            print('encoder_features in train: ', encoder_features)
+            encoder_features = torch.tensor(encoder_features)
+        depth = len(encoder_features) - 1
+        decoder_features = torch.flip(encoder_features, dims=(0, ))
+
+
+        # for d in range(depth):
+        #     if d == 0 and b0_mask is not None:
+        #         encoder_module.append(CustomLinearEnc(encoder_features[d], encoder_features[d+1], b0_mask, device))
+        #     else:
+        #         encoder_module.append(nn.Linear(encoder_features[d], encoder_features[d+1]))
+        #     encoder_module.append(activ_fct)
+            
+
+            
+        #     if d < (depth - 1):
+        #         if d == 0 and latent_space is not None:
+        #             decoder_module.append(latent_space)
+        #             for param in latent_space.parameters():
+        #                 param.requires_grad = False
+        #             decoder_module.append(activ_fct)
+        #         elif d==0 and latent_space is None:
+        #             decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
+        #             decoder_module.append(activ_fct)
+        #         else:
+        #             decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
+        #             decoder_module.append(activ_fct)
+        #     else:
+        #         decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
+        #         decoder_module.append(nn.Sigmoid())
+
+        # self.encoder_seq = nn.Sequential(*encoder_module)
+        # self.decoder_seq = nn.Sequential(*decoder_module)
+
+        f = h5py.File(r'/home/hpc/mfqb/mfqb102h/LASER/data/raw/1.0mm_126-dir_R3x3_dvs.h5', 'r') #TODO: revert hardcoding
+        bvals = f['bvals'][0:22]
+        bvecs = f['bvecs'][0:22]
+        f.close()
+
+        modelPath = '/home/hpc/mfqb/mfqb102h/LASER/code/laser/training/trained_data/DAE_BAS_new_build_up/Shell_1' + os.sep
+
+        stream = open(modelPath + 'config.yaml', 'r')
+        modelConfig = yaml.load(stream, Loader)
+        modelType = modelConfig['model']
+        model_depth = modelConfig['depth']
+        N_latent = 15
+        model_activ_fct = modelConfig['activation_fct']
+        samples = modelConfig['sphere_samples']
+        encoder_features = modelConfig['encoder_features']
+        b0_mask_shell1 = None
+
+
+        if modelConfig['mask_usage']:
+            b0_mask_shell1 = bvals > 50
+        ae_dict = {'DAE':DAE, 
+                    'VAE':VAE}
+
+        model = ae_dict[modelType](b0_mask=b0_mask_shell1, input_features=22, latent_features=N_latent, depth=model_depth, activ_fct_str=model_activ_fct, device='cpu', reco=True, encoder_features=encoder_features)
+        model.load_state_dict(torch.load(modelPath + 'train_'+modelType+'_Latent' +str(N_latent).zfill(2) + 'final.pt', map_location=torch.device('cpu')))
+
+        model = model.float()
+
+        for param in model.parameters():
+            param.requires_grad = False
+        model.decoder_seq[-2].linear.bias[b0_mask_shell1==False] = 40
+
+        new_enc_seq = []
+        new_enc_seq.append(CustomLinearEnc(33, 27, b0_mask, device='cpu'))
+        new_enc_seq.append(activ_fct)
+        new_enc_seq.append(nn.Linear(27, 22))
+        new_enc_seq.append(activ_fct)
+
+        self.encoder_seq = nn.Sequential(*new_enc_seq, *model.encoder_seq)
+
+        new_dec_seq = []
+        new_dec_seq.append(nn.Linear(22, 27))
+        new_dec_seq.append(activ_fct)
+        new_dec_seq.append(CustomLinearDec(27, 33, b0_mask, device='cpu', reco=reco))
+        new_dec_seq.append(nn.Sigmoid())
+
+        self.encoder_seq = nn.Sequential(*new_enc_seq, *model.encoder_seq)
+        self.decoder_seq = nn.Sequential(*model.decoder_seq, *new_dec_seq)
 
     def encode(self, x):
         return self.encoder_seq(x)

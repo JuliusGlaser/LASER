@@ -281,7 +281,7 @@ def get_fractions(nSteps: int=3)->np.array:
         except:
             fraction_array = fraction_array2
         ball_size += stepsize
-    return fraction_array
+    return fraction_array[0:nSteps]
 
 def sample_from_unit_sphere(n: int)->np.array:
     """

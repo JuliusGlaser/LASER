@@ -108,7 +108,7 @@ def train(network_parameters: NP,
         loss.backward()
         optim.step()
         train_loss += loss.item()
-        if batch_idx % 1000 == 0:
+        if batch_idx % 100 == 0:
             print('Train Epoch: {:4d} [{:10d}/{:10d} ({:3.0f}%)]\tLoss: {:12.6f}'.format(
                 epoch, batch_idx * len(noisy_t), len(loader_train.dataset),
                 100. * batch_idx / len(loader_train),
@@ -247,8 +247,8 @@ def setup(ACQ_DIR: str) -> tuple[NP, np.array, np.array, np.array, np.array]:
     # if different than usual data is used, please adapt here
     f = h5py.File(NetworkParameters.dvs_file_path, 'r')
 
-    bvals = f['bvals'][:]
-    bvecs = f['bvecs'][:]
+    bvals = f['bvals'][22:55]
+    bvecs = f['bvecs'][22:55]
     scalingMatrix = np.ones(bvals.shape)
     # scalingMatrix = scalingMatrix * bvals/1000
     f.close()
