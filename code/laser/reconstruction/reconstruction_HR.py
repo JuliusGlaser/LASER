@@ -964,15 +964,19 @@ def main():
 
             criterion   = nn.MSELoss(reduction='sum')
 
-            iterations  = 300
+            iterations  = 50
             loss_values = []
 
             print('\nfull diffusion estimation\n')
-            shells = [slice(0, 22)]
-            for iter in range(iterations):
+            shells = [slice(0, 22), slice(55, 126), slice(55, 126)]
+            lrs = [1e-1, 5e-2, 1e-2]
+            
                 
                 # batching over coil dimension to reduce size of RAM needed on GPU
-                for shell in shells:
+            for i, shell in enumerate(shells):
+                for param_group in optimizer.param_groups:
+                    param_group['lr'] = lrs[i]
+                for iter in range(iterations):
                     optimizer.zero_grad()
                     optimizer2.zero_grad()
                     # optimizer3.zero_grad()
@@ -996,14 +1000,15 @@ def main():
                     optimizer.step()
                 # optimizer3.step()
 
-                running_loss = loss.item()
-                if np.isnan(running_loss):
-                    print('>> Loss is nan')
-                    break
+                    running_loss = loss.item()
+                    if np.isnan(running_loss):
+                        print('>> Loss is nan')
+                        break
 
-                if iter % 10 == 0:
-                    print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
-                    loss_values.append(running_loss)
+                    if iter % 10 == 0:
+                        print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
+                        loss_values.append(running_loss)
+                
 
             print('>> Reconstruction time: ', -t + time())
             lat_img = x_1.detach().cpu().numpy()
