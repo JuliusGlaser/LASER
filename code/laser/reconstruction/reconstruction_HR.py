@@ -861,7 +861,7 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_shell_split_reco.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -968,29 +968,32 @@ def main():
             loss_values = []
 
             print('\nfull diffusion estimation\n')
+            shells = [slice(0, 22)]
             for iter in range(iterations):
-                optimizer.zero_grad()
-                optimizer2.zero_grad()
-                # optimizer3.zero_grad()
-                loss = 0.0
+                
                 # batching over coil dimension to reduce size of RAM needed on GPU
-                for c in range(N_coils):
-                    
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
-                    x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
-                    x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
-                    x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
-                    x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
-                    x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
+                for shell in shells:
+                    optimizer.zero_grad()
+                    optimizer2.zero_grad()
+                    # optimizer3.zero_grad()
+                    loss = 0.0
+                    for c in range(N_coils):
+                        
+                        x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
+                        x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
+                        x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
+                        x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
+                        x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
+                        x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
+                        loss += criterion(torch.view_as_real(kdat_tensor[shell,:,c:c+1,:,:,:]),torch.view_as_real(x_masked[shell,...])) 
 
-                if reg_weight > 0:
-                    loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
-                    # if iter > 1:
-                    loss += loss_of_tv
-                loss.backward()
-                optimizer2.step()
-                optimizer.step()
+                    if reg_weight > 0:
+                        loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
+                        # if iter > 1:
+                        loss += loss_of_tv
+                    loss.backward()
+                    optimizer2.step()
+                    optimizer.step()
                 # optimizer3.step()
 
                 running_loss = loss.item()
