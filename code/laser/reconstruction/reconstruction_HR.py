@@ -769,7 +769,8 @@ def main():
         mask = get_us_mask(kdat_tensor, deviceDec)
         
         f = h5py.File(r'/home/hpc/mfqb/mfqb102h/LASER/data/raw/1.0mm_126-dir_R3x3_dvs.h5', 'r') #TODO: revert hardcoding
-        bvals = f['bvals'][:]
+        bvals = f['bvals'][22:55]
+        bvals_full = f['bvals'][:]
         bvecs = f['bvecs'][:]
         f.close()
 
@@ -785,10 +786,11 @@ def main():
         b0_mask = None
         if modelConfig['mask_usage']:
             b0_mask = bvals > 50
+            b0_mask_full = bvals_full > 50
         ae_dict = {'DAE':ae.DAE, 
                    'VAE':ae.VAE}
         
-        model = ae_dict[modelType](b0_mask=b0_mask, input_features=N_diff, latent_features=N_latent, depth=model_depth, activ_fct_str=model_activ_fct, device=deviceDec, reco=True).to(deviceDec)
+        model = ae.DAE_2_shell(b0_mask=b0_mask, input_features=N_diff, latent_features=N_latent, depth=model_depth, activ_fct_str=model_activ_fct, device=deviceDec, reco=True).to(deviceDec)
         model.load_state_dict(torch.load(modelPath + 'train_'+modelType+'_Latent' +str(N_latent).zfill(2) + 'final.pt', map_location=torch.device(deviceDec)))
         
         model = model.float()
@@ -861,7 +863,7 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_new_model.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -875,7 +877,7 @@ def main():
 
             
             # Reconstruct the b0 images with MUSE
-            N_b0 = sum(b0_mask==0)
+            N_b0 = sum(b0_mask_full==0)
             b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
             b0.requires_grad  = True
 
@@ -889,15 +891,15 @@ def main():
             for iter in range(iterations):
                 optimizer.zero_grad()
                 if N_segments > 1:
-                    x_multi_shot = Multi_shot_for(b0, shot_phase_tensor[b0_mask==0,...])
+                    x_multi_shot = Multi_shot_for(b0, shot_phase_tensor[b0_mask_full==0,...])
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[0,...])
                 else:
                     x_coil_split = coil_for(b0, coil_tensor[0,...])
                 x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                 x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[...])
-                x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
+                x_masked = R(x_mb_combine, mask=mask[b0_mask_full==0,...])
 
-                loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
+                loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask_full==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
 
                 loss.backward()
                 optimizer.step()
@@ -966,6 +968,8 @@ def main():
 
             iterations  = 300
             loss_values = []
+            N_diff = 33
+            shell2 = slice(22,55)
 
             print('\nfull diffusion estimation\n')
             for iter in range(iterations):
@@ -976,13 +980,13 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
-                    x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase[...,shell2], x_1)             
+                    x_multi_shot = Multi_shot_for(x, shot_phase_tensor[shell2,...])
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
-                    x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
+                    x_masked = R(data=x_mb_combine, mask=mask[shell2,:,c:c+1,:,:,:])
+                    loss += criterion(torch.view_as_real(kdat_tensor[shell2,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
@@ -1007,10 +1011,10 @@ def main():
             lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
+            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase[...,shell2], x_1)
             decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy())) 
             phase = phase.detach().cpu().numpy()
-            phase = np.reshape(phase, (MB, N_y, N_x, N_diff))
+            phase = np.reshape(phase[...,shell2], (MB, N_y, N_x, N_diff))
             decFile.create_dataset('DWI_phase', data=phase)  
             dec_out = model.decode(x_1)
             dec_out = dec_out.detach().cpu().numpy()
