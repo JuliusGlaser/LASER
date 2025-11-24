@@ -248,11 +248,11 @@ def tv_loss(x:torch.Tensor, N_z:int, N_x:int, N_y:int, N_latent:int, beta:float 
         float: TV-loss
     '''
     if LASER:
-        x = torch.reshape(x, (N_z, N_x, N_y, N_latent))
+        x = torch.reshape(x, (N_z, N_y, N_x, N_latent))
         diff_x = x[:,1:, :, :] - x[:,:-1, :, :]
         diff_y = x[:,:, 1:, :] - x[:,:, :-1, :]
     else:
-        x = torch.reshape(x, (N_latent, N_z, N_x, N_y))     #N_latent here equals N_diff
+        x = torch.reshape(x, (N_latent, N_z, N_y, N_x))     #N_latent here equals N_diff
         diff_x = x[:,1:, :] - x[:,:-1, :]
         diff_y = x[:,:, 1:] - x[:,:, :-1]
 
@@ -946,36 +946,48 @@ def main():
             t=time()
 
             # define latent image tensor and dwi phases
-            x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
+            
             phase  = torch.angle(dwi)
             phase = phase.reshape(N_diff,MB*N_y*N_x)
             phase = torch.permute(phase, (1,0)).detach()  #(MB*Nx*Ny, N_diff)
             phase = phase.to(deviceDec)
-            x_1.requires_grad  = True
             
             # use reconstructed b0 as initialization for scaling image
             b0 = abs(b0[:,0:1]).to(deviceDec)
             b0.requires_grad  = True
             phase.requires_grad = False
-            
-            optimizer   = optim.Adam([x_1],lr = 1e-1)
-            optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.1)         #SGD optimizer and low learning rate for b0 as otherwise rather unstable reco
-            # optimizer3  = optim.Adam([phase],lr = 1e-1)      #SGD optimizer and low learning rate for phase as otherwise rather unstable reco
+            shells = [slice(0, 126), slice(0, 22), slice(22, 55), slice(55, 126)]
+            scalers = []
+            weightings = [[1,1,1, 1],[12,2,1, 1],[3,8,1, 1],[3,2,4, 1]]
+            tv_weighting = [0.1,9, 3, 0.3]
+            for i in range(len(shells)):
+                scaler = torch.tensor((bvals[:, np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis]), device=deviceDec)
+                scaler[bvals==1000,...] = weightings[i][0]
+                scaler[bvals==2000,...] = weightings[i][1]
+                scaler[bvals==3000,...] = weightings[i][2]
+                scaler[bvals==0,...] = weightings[i][3]
+                scalers.append(scaler)
 
-            criterion   = nn.MSELoss(reduction='sum')
+            x_1  = torch.zeros(MB*N_y*N_x,N_latent, dtype=torch.float).to(deviceDec)
+            x_1.requires_grad  = True   
+            optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.3)         #SGD optimizer and low learning rate for b0 as otherwise rather unstable reco       
+            DWI_to_save = torch.zeros_like(dwi)   
+            for i, shell in enumerate(shells):
+                
+                optimizer   = optim.Adam([x_1],lr = 1e-1)
+                
+                # optimizer3  = optim.Adam([phase],lr = 1e-1)      #SGD optimizer and low learning rate for phase as otherwise rather unstable reco
 
-            iterations  = 50
-            loss_values = []
+                criterion   = nn.MSELoss(reduction='sum')
 
-            print('\nfull diffusion estimation\n')
-            shells = [slice(0, 22), slice(55, 126), slice(55, 126)]
-            lrs = [1e-1, 5e-2, 1e-2]
-            
+                iterations  = 60
+                loss_values = []
+
+                print(f'\nfull diffusion estimation shell {i}\n')
+                         
                 
                 # batching over coil dimension to reduce size of RAM needed on GPU
-            for i, shell in enumerate(shells):
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] = lrs[i]
+            
                 for iter in range(iterations):
                     optimizer.zero_grad()
                     optimizer2.zero_grad()
@@ -989,10 +1001,10 @@ def main():
                         x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                         x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                         x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                        loss += criterion(torch.view_as_real(kdat_tensor[shell,:,c:c+1,:,:,:]),torch.view_as_real(x_masked[shell,...])) 
+                        loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:])*scalers[i],torch.view_as_real(x_masked[:,...])*scalers[i]) 
 
                     if reg_weight > 0:
-                        loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
+                        loss_of_tv = tv_weighting[i] * tv_loss(x_1, MB, N_y, N_x, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
                         # if iter > 1:
                         loss += loss_of_tv
                     loss.backward()
@@ -1008,22 +1020,32 @@ def main():
                     if iter % 10 == 0:
                         print(f'>> iteration {iter} / {iterations}, current loss: {running_loss}')
                         loss_values.append(running_loss)
+
+                if i == 0:
+                    b0.requires_grad  = False
+                else:
+                    DWI_to_save[shell,...] = x[shell,...].detach()
+                    lat_img = x_1.detach().cpu().numpy()
+                    lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
+                    lat_img = np.transpose(lat_img, (-1,0,1,2))
+                    decFile.create_dataset('DWI_latent_shell_'+str(i), data=lat_img)
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
+                    decFile.create_dataset('DWI_weighted_on_shell'+str(i), data=np.array(x.detach().cpu().numpy())) 
+                    dec_out = model.decode(x_1)
+                    dec_out = dec_out.detach().cpu().numpy()
+                    dec_out = np.reshape(dec_out, (MB, N_y, N_x, N_diff))
+                    decFile.create_dataset('latent_decoded_shell_'+str(i), data=dec_out)
+                
                 
 
             print('>> Reconstruction time: ', -t + time())
-            lat_img = x_1.detach().cpu().numpy()
-            lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
-            lat_img = np.transpose(lat_img, (-1,0,1,2))
-            decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
-            decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy())) 
+            
+            
             phase = phase.detach().cpu().numpy()
             phase = np.reshape(phase, (MB, N_y, N_x, N_diff))
             decFile.create_dataset('DWI_phase', data=phase)  
-            dec_out = model.decode(x_1)
-            dec_out = dec_out.detach().cpu().numpy()
-            dec_out = np.reshape(dec_out, (MB, N_y, N_x, N_diff))
-            decFile.create_dataset('latent_decoded', data=dec_out)
+            
+            decFile.create_dataset('DWI', data=DWI_to_save.detach().cpu().numpy())
 
             decFile.close()
 
