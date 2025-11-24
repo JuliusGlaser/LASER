@@ -2,7 +2,7 @@
 
 modelPath: ../training/trained_data/DAE_BAS/          # directory of the saved model checkpoint
 data_directory: /home/vault/mfqb/mfqb102h/meas_MID00203_FID00641_ep2d_diff_ms_2_seg_3x3_126               # directory to the raw data
-save_directory: /home/vault/mfqb/mfqb102h/meas_MID00203_FID00641_ep2d_diff_ms_2_seg_3x3_126                  # directory where the directories of the reconstructions are created and the results then stored
+save_directory: /home/vault/mfqb/mfqb102h/meas_MID00203_FID00641_ep2d_diff_ms_2_seg_3x3_126/TV_norm                  # directory where the directories of the reconstructions are created and the results then stored
 
 coil_file_name: coils_reord          # name of the file storing coil sensitivities
 data_file_name: kdat_slice_    # shared name of the data files
