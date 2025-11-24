@@ -7,7 +7,7 @@ dictionary:
   # DTI: "DTI_PF_us3_comb_1"
   # LLR: "LLR_PF_us3_l_1_comb_1"
   # BAS: "BAS_PF_us3_comb_1"
-  DAE_BAS_splitted_reco_TV_12: DAE_BAS_splitted_reco_TV_12_PF_comb_part1
+  DAE_BAS_splitted_reco_TV_01_9_3_03: DAE_BAS_splitted_reco_TV_01_9_3_03_comb_part1
 N_x: &N_x 110
 N_y: &N_y 110
 N_z: &N_z 26
@@ -58,5 +58,5 @@ plot_joint_fig: True
 
 num_fiber: 2
 remove_bootstrap_data: True
-N_bootstrap: 1000
-bootstrap_dir_name: bootstraps_1000_slice_all_PF_new_reco
+N_bootstrap: 100
+bootstrap_dir_name: bootstraps_100_slice_all_PF_new_reco

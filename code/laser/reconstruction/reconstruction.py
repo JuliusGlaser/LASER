@@ -956,7 +956,7 @@ def main():
             shells = [slice(0, 126), slice(0, 22), slice(22, 55), slice(55, 126)]
             scalers = []
             weightings = [[1,1,1, 1],[12,2,1, 1],[3,8,1, 1],[3,2,4, 1]]
-            tv_weighting = [12, 12, 12, 12]
+            tv_weighting = [0.1,9, 3, 0.3]
             for i in range(len(shells)):
                 scaler = torch.tensor((bvals[:, np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis]), device=deviceDec)
                 scaler[bvals==1000,...] = weightings[i][0]
@@ -1021,26 +1021,30 @@ def main():
                     b0.requires_grad  = False
                 else:
                     DWI_to_save[shell,...] = x[shell,...].detach()
+                    lat_img = x_1.detach().cpu().numpy()
+                    lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
+                    lat_img = np.transpose(lat_img, (-1,0,1,2))
+                    decFile.create_dataset('DWI_latent_shell_'+str(i), data=lat_img)
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
+                    decFile.create_dataset('DWI_weighted_on_shell'+str(i), data=np.array(x.detach().cpu().numpy())) 
+                    dec_out = model.decode(x_1)
+                    dec_out = dec_out.detach().cpu().numpy()
+                    dec_out = np.reshape(dec_out, (MB, N_y, N_x, N_diff))
+                    decFile.create_dataset('latent_decoded_shell_'+str(i), data=dec_out)
                 
                 
 
             print('>> Reconstruction time: ', -t + time())
-            lat_img = x_1.detach().cpu().numpy()
-            lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
-            lat_img = np.transpose(lat_img, (-1,0,1,2))
-            decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
-            decFile.create_dataset('DWI_shell3', data=np.array(x.detach().cpu().numpy())) 
+            
+            
             phase = phase.detach().cpu().numpy()
             phase = np.reshape(phase, (MB, N_y, N_x, N_diff))
             decFile.create_dataset('DWI_phase', data=phase)  
-            dec_out = model.decode(x_1)
-            dec_out = dec_out.detach().cpu().numpy()
-            dec_out = np.reshape(dec_out, (MB, N_y, N_x, N_diff))
-            decFile.create_dataset('latent_decoded', data=dec_out)
+            
             decFile.create_dataset('DWI', data=DWI_to_save.detach().cpu().numpy())
 
             decFile.close()
+
 
     #
     # VAE as regularizer

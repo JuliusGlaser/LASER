@@ -8,7 +8,7 @@
 
   reco_data_path: '/home/vault/mfqb/mfqb102h/meas_MID00203_FID00641_ep2d_diff_ms_2_seg_3x3_126/LASER/DAE_BAS/' # path to directory where reconstructed data is stored
   name: 'DecRecon'                       # shared name of all reconstructed slices
-  name_to_save: BAS_shell_split_reco_TV_12_combined  # name under which combined data should be saved
+  name_to_save: BAS_shell_split_reco_Wavelet_combined  # name under which combined data should be saved
   N_diff: 126                            # number of diffusion encoding directions
   N_coils: 32                            # number of coils
   N_x: 220                               # Number of X pixels

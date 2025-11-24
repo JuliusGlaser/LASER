@@ -860,8 +860,8 @@ def main():
     #
         if LASER:
             print(str(modelConfig['diffusion_model']))
-            create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_shell_split_reco.h5', 'w')
+            create_directory(save_dir + 'TV_norm/LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
+            decFile = h5py.File(save_dir + 'TV_norm/LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_shell_split_reco.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
