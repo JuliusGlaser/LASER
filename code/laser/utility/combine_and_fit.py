@@ -14,7 +14,7 @@ import argparse
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Build the path to config.yaml in the same folder as the script
-config_path = os.path.join(script_dir, "config.yaml")
+config_path = os.path.join(script_dir, "config_LR.yaml")
 
 stream = open(config_path, 'r')
 config = yaml.load(stream, Loader)
@@ -76,7 +76,7 @@ if run_combine_DWI:
     recons_all_slices_dwi = np.zeros((N_diff, N_slices, N_y, N_x), dtype=np.complex64)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_shell_split_reco.h5', 'r')
+        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_'+str(args.part)+'.h5', 'r')
 
         dwi_data = f['DWI'][:].squeeze()
         f.close()
@@ -97,7 +97,7 @@ if run_combine_latent:
     slice_loop = range(0, maxInd, 1)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_shell_split_reco.h5', 'r')
+        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_'+str(args.part)+'.h5', 'r')
         dwi_data1 = f['DWI_latent_shell_1'][:].squeeze()
         dwi_data2 = f['DWI_latent_shell_2'][:].squeeze()
         dwi_data3 = f['DWI_latent_shell_3'][:].squeeze()

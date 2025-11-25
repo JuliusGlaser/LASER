@@ -30,6 +30,7 @@ from laser.training.models.nn import autoencoder as ae
 import yaml
 from yaml import Loader
 from time import time
+from pytorch_wavelets import DTCWTForward, DTCWTInverse, DWTForward,DWTInverse
 
 def create_directory(path: str)->bool:
     """
@@ -633,6 +634,20 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
 
+def Wfor_dec(x_1, MB, N_y, N_x, N_latent, W):
+    '''
+    inputs:
+        x (M*N x L)  - set of coefficients to go through the forward operator
+        W            - pytorch wavelet operator
+    '''
+    
+    wlr, whr = W(x_1.reshape(MB,N_y,N_x,N_latent).permute(3,0,1,2))
+    l1wavelet_loss = torch.sum(torch.abs(wlr))
+    
+    for a_whr in whr:
+        l1wavelet_loss += torch.sum(torch.abs(a_whr))
+                     
+    return l1wavelet_loss
 
 def main():
 
@@ -956,7 +971,7 @@ def main():
             shells = [slice(0, 126), slice(0, 22), slice(22, 55), slice(55, 126)]
             scalers = []
             weightings = [[1,1,1, 1],[12,2,1, 1],[3,8,1, 1],[3,2,4, 1]]
-            tv_weighting = [12, 12, 12, 12]
+            tv_weighting = [0.1,40, 25,10]
             for i in range(len(shells)):
                 scaler = torch.tensor((bvals[:, np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis]), device=deviceDec)
                 scaler[bvals==1000,...] = weightings[i][0]
@@ -965,18 +980,20 @@ def main():
                 scaler[bvals==0,...] = weightings[i][3]
                 scalers.append(scaler)
 
-            x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
+            x_1  = torch.zeros(MB*N_y*N_x,N_latent, dtype=torch.float).to(deviceDec)
             x_1.requires_grad  = True   
             optimizer2  = optim.SGD([b0],lr = 1e-3, momentum = 0.3)         #SGD optimizer and low learning rate for b0 as otherwise rather unstable reco       
-            DWI_to_save = torch.zeros_like(dwi)   
+            DWI_to_save = torch.zeros_like(dwi)  
+            x_wavelet = DWTForward(J=4, mode='zero', wave='db3').to(deviceDec) 
             for i, shell in enumerate(shells):
+                
                 optimizer   = optim.Adam([x_1],lr = 1e-1)
                 
                 # optimizer3  = optim.Adam([phase],lr = 1e-1)      #SGD optimizer and low learning rate for phase as otherwise rather unstable reco
 
                 criterion   = nn.MSELoss(reduction='sum')
 
-                iterations  = 150
+                iterations  = 60
                 loss_values = []
 
                 print(f'\nfull diffusion estimation shell {i}\n')
@@ -1000,7 +1017,7 @@ def main():
                         loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:])*scalers[i],torch.view_as_real(x_masked[:,...])*scalers[i]) 
 
                     if reg_weight > 0:
-                        loss_of_tv = tv_weighting[i] * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
+                        loss_of_tv = tv_weighting[i] * Wfor_dec(x_1, MB, N_y, N_x, N_latent, x_wavelet) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
                         # if iter > 1:
                         loss += loss_of_tv
                     loss.backward()
@@ -1021,16 +1038,20 @@ def main():
                     b0.requires_grad  = False
                 else:
                     DWI_to_save[shell,...] = x[shell,...].detach()
+                    lat_img = x_1.detach().cpu().numpy()
+                    lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
+                    lat_img = np.transpose(lat_img, (-1,0,1,2))
+                    decFile.create_dataset('DWI_latent_shell_'+str(i), data=lat_img)
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
+                    decFile.create_dataset('DWI_weighted_on_shell'+str(i), data=np.array(x.detach().cpu().numpy())) 
+                    dec_out = model.decode(x_1)
+                    dec_out = dec_out.detach().cpu().numpy()
+                    dec_out = np.reshape(dec_out, (MB, N_y, N_x, N_diff))
+                    decFile.create_dataset('latent_decoded_shell_'+str(i), data=dec_out)
                 
                 
 
             print('>> Reconstruction time: ', -t + time())
-            lat_img = x_1.detach().cpu().numpy()
-            lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
-            lat_img = np.transpose(lat_img, (-1,0,1,2))
-            decFile.create_dataset('DWI_latent', data=lat_img)
-            x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
-            decFile.create_dataset('DWI_shell3', data=np.array(x.detach().cpu().numpy())) 
             phase = phase.detach().cpu().numpy()
             phase = np.reshape(phase, (MB, N_y, N_x, N_diff))
             decFile.create_dataset('DWI_phase', data=phase)  
