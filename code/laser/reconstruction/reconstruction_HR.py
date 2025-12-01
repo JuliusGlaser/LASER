@@ -31,6 +31,9 @@ import yaml
 from yaml import Loader
 from time import time
 
+import torch
+import torch.nn.functional as F
+
 def create_directory(path: str)->bool:
     """
     Creates a directory at the specified path if it doesn't already exist.
@@ -127,6 +130,19 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Z = number of acquired slices
     Q = number of diffusion directions
     '''
+
+    # lat_img = torch.reshape(x_1, (N_z, N_y, N_x, 11))
+    # lat_img = lat_img.permute(0, -1, 1, 2)    #Q,Z,X,Y,2
+    # lat_img = torch.reshape(x_1, (N_z,11, N_y, N_x))
+
+    # # apply max pooling (example: 2×2 kernel, stride 2)
+    # pooled_lat = F.avg_pool2d(lat_img, kernel_size=3, stride=1, padding=1)
+
+    # # reshape back
+    # x_1_pooled = pooled_lat.reshape(N_z, 11, N_y, N_x)
+    # x_1_pooled = x_1_pooled.permute(0,2,3,1)    #Q,Z,X,Y,2
+    # x_1_pooled = x_1_pooled.reshape(N_z*N_y*N_x, 11)
+
     out = model.decode(x_1)
     # print('out shape before scaling: ', out.shape)
     # print('b0 shape: ', b0.shape)
@@ -135,8 +151,90 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
+    
 
     return out_scaled
+
+def Decoder_for_pool_reg(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torch.Tensor, phase:torch.Tensor, x_1:torch.Tensor)-> torch.Tensor:
+    '''
+    Takes an input data through the decoder trained for compressing signal evolution
+    Args:
+        model (torch.nn.Module): the neural network used for decoding,
+        N_x (int): Size of x-dimension,
+        N_y (int): Size of y-dimension,
+        N_z (int): Size of z-dimension,
+        Q (int): Size of q-dimension,
+        b0 (torch.Tensor): b0 to be used for scaling of AE output, shape (X*Y*Z,1),
+        x_1 (torch.Tensor): latent real-valued reconstructions of DWI data, shape (X*Y, L)
+    Returns:
+        torch.Tensor: decoded, b0 scaled, complex valued, reshaped DWI reconstructions, shape (Q, 1, 1, Z, Y, X)
+
+    L = number of latent variables
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of acquired slices
+    Q = number of diffusion directions
+    '''
+
+    def gaussian_smooth_per_z(t, kernel_size=5, sigma=1.0):
+        """
+        t: (B, Z, H, W) tensor
+        Smooths each (H, W) slice independently for every z, per batch.
+        """
+        B, Z, H, W = t.shape
+
+        # 1D Gaussian
+        coords = torch.arange(kernel_size, device=t.device) - kernel_size // 2
+        g = torch.exp(-(coords**2) / (2 * sigma**2))
+        g = g / g.sum()
+
+        # Make 2D separable kernel
+        g2d = g[:, None] * g[None, :]        # (K, K)
+        g2d = g2d[None, None, :, :]          # (1, 1, K, K)
+
+        # 1) Flatten (B, Z) into batch dimension so each z is its own "channel"
+        t_flat = t.view(B * Z, 1, H, W)      # (B*Z, 1, H, W)
+
+        # 2) Convolve
+        t_smooth = F.conv2d(t_flat, g2d, padding=kernel_size // 2)
+
+        # 3) Reshape back
+        t_smooth = t_smooth.view(B, Z, H, W)
+        return t_smooth
+
+    lat_img = torch.reshape(x_1, (N_z, N_y, N_x, 11))
+    lat_img = lat_img.permute(0, -1, 1, 2)    #Q,Z,X,Y,2
+    lat_img = torch.reshape(x_1, (N_z,11, N_y, N_x))
+
+    # apply max pooling (example: 2×2 kernel, stride 2)
+    pooled_lat = gaussian_smooth_per_z(lat_img, kernel_size=7, sigma=2.0)
+
+    # reshape back
+    x_1_pooled = pooled_lat.reshape(N_z, 11, N_y, N_x)
+    x_1_pooled = x_1_pooled.permute(0,2,3,1)    #Q,Z,X,Y,2
+    x_1_pooled = x_1_pooled.reshape(N_z*N_y*N_x, 11)
+    criterion   = nn.MSELoss(reduction='sum')
+
+    out = model.decode(x_1_pooled)
+    # print('out shape before scaling: ', out.shape)
+    # print('b0 shape: ', b0.shape)
+    # print('phase shape: ', phase.shape)
+    # print(N_z,N_y, N_x,Q)
+    out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
+    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
+    out_scaled_pooled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
+
+    out = model.decode(x_1)
+    # print('out shape before scaling: ', out.shape)
+    # print('b0 shape: ', b0.shape)
+    # print('phase shape: ', phase.shape)
+    # print(N_z,N_y, N_x,Q)
+    out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
+    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
+    out_scaled_not_pooled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
+    
+
+    return criterion(torch.view_as_real(out_scaled_not_pooled), torch.view_as_real(out_scaled_pooled))
 
 def Multi_shot_for(x:torch.Tensor, phase:torch.Tensor)->torch.Tensor:
     '''
@@ -671,7 +769,6 @@ def main():
     parser.add_argument("--slice_inc", type=int, default=slice_inc, help="slice increment if multiple slice recon")
     parser.add_argument("--part", type=int, default=1)
     parser.add_argument('--us', type=int, default=2)
-    parser.add_argument('--lat', type=int, default=7) #FIXME: remove if not needed
     parser.add_argument('--scaling', action='store_true', help="Use scaling in reconstruction") #FIXME: remove if not needed
 
   
@@ -683,7 +780,7 @@ def main():
     save_dir = save_dir + os.sep
     data_dir = data_dir + os.sep
 
-    modelPath       = modelPath + str(args.lat) + os.sep #FIXME: remove if not needed
+    modelPath       = modelPath + os.sep #FIXME: remove if not needed
 
     print('>> Following reconstructions are run (if True):')
     print('>> Muse reconstruction: ',muse_recon)
@@ -766,6 +863,7 @@ def main():
 
 
         kdat_tensor = torch.tensor(kdat_prep, device=deviceDec)    
+        kdat_tensor = kdat_tensor[0:22,...]
         
         t=time()                                
         sms_phase_tensor = get_sms_phase(MB, N_y, N_x, N_Accel_PE, deviceDec) 
@@ -774,8 +872,8 @@ def main():
         mask = get_us_mask(kdat_tensor, deviceDec)
         
         f = h5py.File(r'/home/hpc/mfqb/mfqb102h/LASER/data/raw/1.0mm_126-dir_R3x3_dvs.h5', 'r') #TODO: revert hardcoding
-        bvals = f['bvals'][:]
-        bvecs = f['bvecs'][:]
+        bvals = f['bvals'][0:22]
+        bvecs = f['bvecs'][0:22]
         f.close()
 
         # load model config of used AE and prepare it for reconstruction
@@ -788,6 +886,7 @@ def main():
         model_activ_fct = modelConfig['activation_fct']
         samples = modelConfig['sphere_samples']
         b0_mask = None
+        N_diff = 22
         if modelConfig['mask_usage']:
             b0_mask = bvals > 50
         ae_dict = {'DAE':ae.DAE, 
@@ -945,7 +1044,7 @@ def main():
                 scale_str = '_scaling'
             else:
                 scale_str = '_no_scale'
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_lat' + str(args.lat)+ scale_str +'.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_1_shell_3.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -957,7 +1056,7 @@ def main():
             else:
                 shot_phase_tensor = torch.ones((1,1,1,1,1,1), dtype=torch.complex64, device=deviceDec)
 
-            
+            shot_phase_tensor = shot_phase_tensor[0:22,...]
             # Reconstruct the b0 images with MUSE
             N_b0 = sum(b0_mask==0)
             b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
@@ -978,7 +1077,7 @@ def main():
                 else:
                     x_coil_split = coil_for(b0, coil_tensor[0,...])
                 x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
-                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[...])
+                x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                 x_masked = R(x_mb_combine, mask=mask[b0_mask==0,...])
 
                 loss   = criterion(torch.view_as_real(kdat_tensor[b0_mask==0,...]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
@@ -1015,9 +1114,9 @@ def main():
                     x_multi_shot = Multi_shot_for(dwi, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
-                    x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
-                    x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
+                    x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor[0:22,...])
+                    x_masked = R(data=x_mb_combine, mask=mask[0:22,:,c:c+1,:,:,:])
+                    loss += criterion(torch.view_as_real(kdat_tensor[0:22,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) + 0.001*criterion(torch.view_as_real(b0),torch.view_as_real(torch.zeros_like(b0)))
 
                 loss.backward()
                 optimizer.step()
@@ -1073,13 +1172,13 @@ def main():
                 # batching over coil dimension to reduce size of RAM needed on GPU
                 for c in range(N_coils):
                     
-                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)             
+                    x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase[...,0:22], x_1)             
                     x_multi_shot = Multi_shot_for(x, shot_phase_tensor)
                     x_coil_split = coil_for(x_multi_shot, coil_tensor[:,:,c:c+1,:,:,:])
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
-                    x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:])*scaler,torch.view_as_real(x_masked)*scaler) 
+                    x_masked = R(data=x_mb_combine, mask=mask[0:22,:,c:c+1,:,:,:])
+                    loss += criterion(torch.view_as_real(kdat_tensor[0:22,:,c:c+1,:,:,:])*scaler,torch.view_as_real(x_masked)*scaler) 
                     # print('criterion shape', criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)).shape)
 
                     # x1= Decoder_for(model1, N_x, N_y, MB, N_diff1, b0, phase[..., 0:N_diff1], x_1)             
@@ -1106,7 +1205,7 @@ def main():
                     # x_masked3 = R(data=x_mb_combine3, mask=mask[N_diff1+N_diff2:N_diff,:,c:c+1,:,:,:])
                     # loss += 30*criterion(torch.view_as_real(kdat_tensor[N_diff1+N_diff2:N_diff,:,c:c+1,:,:,:]),torch.view_as_real(x_masked3))
                 if reg_weight > 0:
-                    loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
+                    loss_of_tv = 0.15 * Decoder_for_pool_reg(model, N_x, N_y, MB, N_diff, b0, phase[...,0:22], x_1) # #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
                     # if iter > 1:
                     loss += loss_of_tv
                     
