@@ -7,7 +7,7 @@ dictionary:
   # DTI: "DTI_PF_us3_comb_1"
   # LLR: "LLR_PF_us3_l_1_comb_1"
   # BAS: "BAS_PF_us3_comb_1"
-  DAE_BAS_splitted_reco_TV_01_9_3_03: DAE_BAS_splitted_reco_TV_01_9_3_03_comb_part1
+  DAE_BAS_splitted_reco_latent_smooth: DAE_BAS_splitted_reco_latent_smooth_PF_comb_part1
 N_x: &N_x 110
 N_y: &N_y 110
 N_z: &N_z 26

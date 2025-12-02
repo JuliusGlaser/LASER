@@ -22,6 +22,7 @@ from os.path import exists
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 
@@ -133,6 +134,87 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     out_scaled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
 
     return out_scaled
+
+def Decoder_for_pool_reg(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torch.Tensor, phase:torch.Tensor, x_1:torch.Tensor)-> torch.Tensor:
+    '''
+    Takes an input data through the decoder trained for compressing signal evolution
+    Args:
+        model (torch.nn.Module): the neural network used for decoding,
+        N_x (int): Size of x-dimension,
+        N_y (int): Size of y-dimension,
+        N_z (int): Size of z-dimension,
+        Q (int): Size of q-dimension,
+        b0 (torch.Tensor): b0 to be used for scaling of AE output, shape (X*Y*Z,1),
+        x_1 (torch.Tensor): latent real-valued reconstructions of DWI data, shape (X*Y, L)
+    Returns:
+        torch.Tensor: decoded, b0 scaled, complex valued, reshaped DWI reconstructions, shape (Q, 1, 1, Z, Y, X)
+
+    L = number of latent variables
+    X = number of frequency columns
+    Y = number of phase-encoding lines
+    Z = number of acquired slices
+    Q = number of diffusion directions
+    '''
+
+    def gaussian_smooth_per_z(t, kernel_size=5, sigma=1.0):
+        """
+        t: (B, Z, H, W) tensor
+        Smooths each (H, W) slice independently for every z, per batch.
+        """
+        B, Z, H, W = t.shape
+
+        # 1D Gaussian
+        coords = torch.arange(kernel_size, device=t.device) - kernel_size // 2
+        g = torch.exp(-(coords**2) / (2 * sigma**2))
+        g = g / g.sum()
+
+        # Make 2D separable kernel
+        g2d = g[:, None] * g[None, :]        # (K, K)
+        g2d = g2d[None, None, :, :]          # (1, 1, K, K)
+
+        # 1) Flatten (B, Z) into batch dimension so each z is its own "channel"
+        t_flat = t.view(B * Z, 1, H, W)      # (B*Z, 1, H, W)
+
+        # 2) Convolve
+        t_smooth = F.conv2d(t_flat, g2d, padding=kernel_size // 2)
+
+        # 3) Reshape back
+        t_smooth = t_smooth.view(B, Z, H, W)
+        return t_smooth
+
+    lat_img = torch.reshape(x_1, (N_z, N_y, N_x, 11))
+    lat_img = lat_img.permute(0, -1, 1, 2)    #Q,Z,X,Y,2
+    lat_img = torch.reshape(x_1, (N_z,11, N_y, N_x))
+
+    # apply max pooling (example: 2×2 kernel, stride 2)
+    pooled_lat = gaussian_smooth_per_z(lat_img, kernel_size=7, sigma=1.5)
+
+    # reshape back
+    x_1_pooled = pooled_lat.reshape(N_z, 11, N_y, N_x)
+    x_1_pooled = x_1_pooled.permute(0,2,3,1)    #Q,Z,X,Y,2
+    x_1_pooled = x_1_pooled.reshape(N_z*N_y*N_x, 11)
+    criterion   = nn.MSELoss(reduction='sum')
+
+    out = model.decode(x_1_pooled)
+    # print('out shape before scaling: ', out.shape)
+    # print('b0 shape: ', b0.shape)
+    # print('phase shape: ', phase.shape)
+    # print(N_z,N_y, N_x,Q)
+    out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
+    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
+    out_scaled_pooled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
+
+    out = model.decode(x_1)
+    # print('out shape before scaling: ', out.shape)
+    # print('b0 shape: ', b0.shape)
+    # print('phase shape: ', phase.shape)
+    # print(N_z,N_y, N_x,Q)
+    out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
+    out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
+    out_scaled_not_pooled = torch.reshape(out_scaled, (Q,1,1,N_z,N_y,N_x))
+    
+
+    return criterion(torch.view_as_real(out_scaled_not_pooled), torch.view_as_real(out_scaled_pooled))
 
 def Multi_shot_for(x:torch.Tensor, phase:torch.Tensor)->torch.Tensor:
     '''
@@ -861,7 +943,7 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'TV_norm/LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'TV_norm/LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_shell_split_reco.h5', 'w')
+            decFile = h5py.File(save_dir + 'TV_norm/LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_shell_split_reco_spatial_reg.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -959,7 +1041,7 @@ def main():
             shells = [slice(0, 126), slice(0, 22), slice(22, 55), slice(55, 126)]
             scalers = []
             weightings = [[1,1,1, 1],[12,2,1, 1],[3,8,1, 1],[3,2,4, 1]]
-            tv_weighting = [0.1,9, 3, 0.3]
+            tv_weighting = [2,2, 2, 2]
             for i in range(len(shells)):
                 scaler = torch.tensor((bvals[:, np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis,  np.newaxis]), device=deviceDec)
                 scaler[bvals==1000,...] = weightings[i][0]
@@ -1004,7 +1086,7 @@ def main():
                         loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:])*scalers[i],torch.view_as_real(x_masked[:,...])*scalers[i]) 
 
                     if reg_weight > 0:
-                        loss_of_tv = tv_weighting[i] * tv_loss(x_1, MB, N_y, N_x, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
+                        loss_of_tv = tv_weighting[i]*Decoder_for_pool_reg(model, N_x, N_y, MB, N_diff, b0, phase, x_1) #tv_weighting[i] * tv_loss(x_1, MB, N_y, N_x, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
                         # if iter > 1:
                         loss += loss_of_tv
                     loss.backward()
