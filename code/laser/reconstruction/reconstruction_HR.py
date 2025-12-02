@@ -127,6 +127,7 @@ def Decoder_for(model:torch.nn.Module, N_x:int, N_y:int, N_z:int, Q:int, b0:torc
     Z = number of acquired slices
     Q = number of diffusion directions
     '''
+    x_1 = model.lat_fused(x_1)      
     out = model.decode(x_1)
     out = (out*b0 *torch.exp(1j*phase)).reshape(N_z,N_y, N_x,Q)
     out_scaled = out.permute(-1, 0, 1, 2)    #Q,Z,X,Y,2
@@ -248,11 +249,11 @@ def tv_loss(x:torch.Tensor, N_z:int, N_x:int, N_y:int, N_latent:int, beta:float 
         float: TV-loss
     '''
     if LASER:
-        x = torch.reshape(x, (N_z, N_x, N_y, N_latent))
+        x = torch.reshape(x, (N_z, N_x, N_y, N_latent*3))
         diff_x = x[:,1:, :, :] - x[:,:-1, :, :]
         diff_y = x[:,:, 1:, :] - x[:,:, :-1, :]
     else:
-        x = torch.reshape(x, (N_latent, N_z, N_x, N_y))     #N_latent here equals N_diff
+        x = torch.reshape(x, (N_latent*3, N_z, N_x, N_y))     #N_latent here equals N_diff
         diff_x = x[:,1:, :] - x[:,:-1, :]
         diff_y = x[:,:, 1:] - x[:,:, :-1]
 
@@ -786,7 +787,8 @@ def main():
         if modelConfig['mask_usage']:
             b0_mask = bvals > 50
         ae_dict = {'DAE':ae.DAE, 
-                   'VAE':ae.VAE}
+                   'VAE':ae.VAE,
+                   'Shell_DAE_joint_lat': ae.Shell_DAE_joint_lat}
         
         model = ae_dict[modelType](b0_mask=b0_mask, input_features=N_diff, latent_features=N_latent, depth=model_depth, activ_fct_str=model_activ_fct, device=deviceDec, reco=True).to(deviceDec)
         model.load_state_dict(torch.load(modelPath + 'train_'+modelType+'_Latent' +str(N_latent).zfill(2) + 'final.pt', map_location=torch.device(deviceDec)))
@@ -795,7 +797,13 @@ def main():
 
         for param in model.parameters():
             param.requires_grad = False
-        model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
+
+        b0_mask1 = b0_mask[0:22]
+        b0_mask2 = b0_mask[22:55]
+        b0_mask3 = b0_mask[55::]
+        model.decoder_seq1[-2].linear.bias[b0_mask1==False] = 40
+        model.decoder_seq2[-2].linear.bias[b0_mask2==False] = 40
+        model.decoder_seq3[-2].linear.bias[b0_mask3==False] = 40
 
         # Calculate yshift of MB acquisition
         yshift = []
@@ -946,7 +954,7 @@ def main():
             t=time()
 
             # define latent image tensor and dwi phases
-            x_1  = torch.zeros(MB*N_x*N_y,N_latent, dtype=torch.float).to(deviceDec)
+            x_1  = torch.zeros(MB*N_x*N_y,N_latent*3, dtype=torch.float).to(deviceDec)
             phase  = torch.angle(dwi)
             phase = phase.reshape(N_diff,MB*N_y*N_x)
             phase = torch.permute(phase, (1,0)).detach()  #(MB*Nx*Ny, N_diff)
@@ -1004,7 +1012,7 @@ def main():
 
             print('>> Reconstruction time: ', -t + time())
             lat_img = x_1.detach().cpu().numpy()
-            lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent))
+            lat_img = np.reshape(lat_img, (MB, N_y, N_x, N_latent*3))
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
             x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)

@@ -64,7 +64,8 @@ class Network_parameters:
             torch.nn.Module: neural network, inherited from nn.Module and defined in ae
         """
         ae_dict = {'DAE':ae.DAE, 
-                   'VAE':ae.VAE}
+                   'VAE':ae.VAE,
+                   'Shell_DAE_joint_lat': ae.Shell_DAE_joint_lat}
         return ae_dict[self.model](b0_mask, input_features=inputFeatures, latent_features=self.latent, device=device,depth=self.depth, activ_fct_str=self.activ_fct).to(device)
 
     def selectLoss(self)->torch.nn.modules.loss:
@@ -125,7 +126,7 @@ class Losses_class:
         Args:
             model (str): string used to define model to train, 
         """
-        if model == 'DAE' or model == 'DAE_from_VAE':
+        if model == 'DAE' or model == 'DAE_from_VAE' or model == 'Shell_DAE_joint_lat':
             self.train = []
             self.test = []
             self.mse = []

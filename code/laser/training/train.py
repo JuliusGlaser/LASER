@@ -82,7 +82,7 @@ def train(network_parameters: NP,
         optim.zero_grad()
 
         # denoise inputs, and calculate loss
-        if network_parameters.model == 'DAE':
+        if network_parameters.model == 'DAE' or network_parameters.model == 'Shell_DAE_joint_lat':
             recon_t = model(noisy_t)
             loss = loss_function(recon_t, clean_t)
         elif network_parameters.model == 'VAE':
@@ -169,7 +169,7 @@ def test(network_parameters: NP,
             clean_t = clean_t.type(torch.FloatTensor).to(device)
 
             # denoise inputs and calculate loss (KLD irrelevant and irritating therefore not correctly handled)
-            if network_parameters.model == 'DAE':
+            if network_parameters.model == 'DAE' or network_parameters.model == 'Shell_DAE_joint_lat':
                 recon_t = model(noisy_t)
                 loss = loss_function(recon_t, clean_t)
             elif network_parameters.model == 'VAE':
