@@ -591,14 +591,10 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
 
     assert dwi_muse.shape == ishape
 
-<<<<<<< HEAD
     mag = np.abs(dwiData)
     phase = np.angle(dwiData)
 
     b0_mask = bvals > 50
-=======
-    b0_mask = bvals < 50
->>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
     b0 = abs(dwiData[b0_mask, ...])
 
@@ -636,11 +632,7 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
         latent_tensor = latent_tensor.permute(3,0,1,2)
 
     unscaled_dwi = dwi_model_tensor.detach().cpu().numpy()
-<<<<<<< HEAD
     denoised_dwi = unscaled_dwi*b0[0,...]*np.exp(1j*phase)
-=======
-    denoised_dwi = unscaled_dwi * b0[0,...]
->>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
