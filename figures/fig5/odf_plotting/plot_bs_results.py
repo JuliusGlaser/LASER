@@ -191,7 +191,11 @@ def run_statistics_on_angles_masked_single_data(dir, mask, vec1_comb, vec2_comb,
 
     return angle_1_filtered_mask, angle_2_filtered_mask
 
+<<<<<<< HEAD
 def plot_violins(data, dataNames, save=False, save_path=None, onlyOne=False):
+=======
+def plot_violins(data, dataNames, save=False, save_path=None):
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
     num_rows = len(data)
     if onlyOne:
         plot_colors = ["#FF0000"]
@@ -316,13 +320,18 @@ def save_precomputed_npz(violin_list, box_list, filename="precomputed.npz"):
 
 
 # Load mask
-index_f = nib.load(r'C:\msys64\home\glaserjs\bootstrap_analysis_1_fod\0\fixel_masks_all_15\index.nii')
+index_f = nib.load(r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF/mask_all_slice.nii')
 index_data = index_f.get_fdata()
 mask_1_plus_fiber_all = (index_data[:,:,0:25,0] > 0).astype(bool)
 mask_2_fiber_all = (index_data[:,:,0:25,0] > 1).astype(bool)
 
+<<<<<<< HEAD
 dir = r'W:\radiologie\mrt-probanden\AG_Laun\Julius_Glaser\Revision_bipolar\fod\BS_analysis_slice_all_1000' + os.sep
 save_dir = r'W:\radiologie\mrt-probanden\AG_Laun\Julius_Glaser\Revision_bipolar\fod\BS_analysis_slice_all_1000/results' + os.sep
+=======
+dir = r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF' + os.sep
+save_dir = r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF/results' + os.sep
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 # Load data
 
 # # LLR
@@ -447,7 +456,11 @@ save_dir = r'W:\radiologie\mrt-probanden\AG_Laun\Julius_Glaser\Revision_bipolar\
 # plt.tight_layout()
 # plt.savefig(save_dir + 'angle_boxes_all.pdf', dpi=300)
 
+<<<<<<< HEAD
 # # Compute new mask
+=======
+# Compute new mask
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
 mask_1_plus_fiber_float_all = mask_1_plus_fiber_all.copy().astype(float)
 mask_2_fiber_float_all = mask_2_fiber_all.copy().astype(float)
@@ -455,7 +468,11 @@ mask_2_fiber_float_all = mask_2_fiber_all.copy().astype(float)
 mask_1_plus_fiber_float_all[~mask_1_plus_fiber_all] = np.nan
 mask_2_fiber_float_all[~mask_2_fiber_all] = np.nan
 
+<<<<<<< HEAD
 # # Calculate bias
+=======
+# Calculate bias
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
 # f = h5py.File(dir + r'bootstrap_analysis_PI.h5','r')
 # print(f.keys())
@@ -491,8 +508,11 @@ mask_2_fiber_float_all[~mask_2_fiber_all] = np.nan
 # f = h5py.File(dir + r'bootstrap_analysis_DTI.h5','r')
 # vec1_comb_DTI = f['vec1_comb'][:]
 # vec2_comb_DTI = f['vec2_comb'][:]
+<<<<<<< HEAD
 # org_vec1 = f['org_vec_1'][:]
 # org_vec2 = f['org_vec_2'][:]
+=======
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 # f.close()
 # kappa_1_DTI, bias_angle_1_DTI, angle_95_1_DTI = compute_analysis_metrics(vec1_comb_DTI, org_vec1)
 # kappa_2_DTI, bias_angle_2_DTI, angle_95_2_DTI = compute_analysis_metrics(vec2_comb_DTI, org_vec2)
@@ -535,7 +555,11 @@ mask_2_fiber_float_all[~mask_2_fiber_all] = np.nan
 # f.close()
 
 # # Load analyzing masks
+<<<<<<< HEAD
 mask_dir = r'W:\radiologie\mrt-probanden\AG_Laun\Julius_Glaser\Revision_bipolar\fod\Analyzing_masks\All_slices' + os.sep
+=======
+mask_dir = r'/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/bootstraps_1000_slice_all_PF' + os.sep
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
 # mask_CC_f = nib.load(mask_dir + r'CorpusCallosum.nii')
 # CC_all = mask_CC_f.get_fdata().astype(bool)
@@ -547,6 +571,7 @@ mask_dir = r'W:\radiologie\mrt-probanden\AG_Laun\Julius_Glaser\Revision_bipolar\
 # IC_all = internal_capsule_f.get_fdata().astype(bool)                              #IC = Internal Capsule
 
 # angles1_CC_all, angles2_CC_all = run_statistics_on_angles_masked(dir, CC_all, slice_idx=list(range(25)))
+<<<<<<< HEAD
 # mask_names = ['CorpusCallosum.nii','CrossingSection.nii', 'InternalCapsuleNew.nii']
 mask_names = ['CorpusCallosum.nii']
 data_to_process_list = ['PI', 'MPPCA', 'LLR', 'DTI', 'BAS']
@@ -562,12 +587,42 @@ for mask in mask_names:
     ax1.set_xlim(0, len(data_to_process_list) + 1)
     ax1.set_xticklabels(data_to_process_list)
     ax1.set_ylim(0, 90)
+=======
+file_names = ['bootstrap_analysis_PI.h5', 'bootstrap_analysis_MPPCA.h5', 'bootstrap_analysis_LLR.h5', 'bootstrap_analysis_DTI.h5', 'bootstrap_analysis_BAS.h5']
+angles1_CC_all = []
+angles2_CC_all = []
+for data_file in file_names:
+    print('Processing file: ', data_file)
+    f = h5py.File(dir + data_file,'r')
+    vec1_comb = f['vec1_comb'][:]
+    org_vec1 = f['org_vec_1'][:]
+    vec2_comb = f['vec2_comb'][:]
+    org_vec2 = f['org_vec_2'][:]
+    angles = f['angles'][:]
+    f.close()
+
+    angle_1_filtered_mask, angle_2_filtered_mask = run_statistics_on_angles_masked_single_data(dir, CC_all, vec1_comb, vec2_comb, angles, org_vec1, org_vec2, slice_idx=list(range(25)))
+    angles1_CC_all.append(angle_1_filtered_mask)
+    angles2_CC_all.append(angle_2_filtered_mask)
+
+data = [angles1_CC_all, angles2_CC_all]
+dataNames = ["Angle 1", "Angle 2"]
+
+plot_violins(data, dataNames, save=True, save_path=save_dir+'angle_violins_CC_all.pdf')
+plot_boxplots(data, dataNames, save=True, save_path=save_dir+'angle_violins_CC_all.pdf')
+print_stats('CC all mask', data)
+
+angles1_CS_all, angles2_CS_all = run_statistics_on_angles_masked(dir, CS_all, slice_idx=list(range(25)))
+data = [angles1_CS_all, angles2_CS_all]
+dataNames = ["Angle 1", "Angle 2"]
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
     fig2, ax2 = plt.subplots()
     ax2.set_xlim(0, len(data_to_process_list) + 1)
     ax2.set_xticklabels(data_to_process_list)
     ax2.set_ylim(0, 90)
 
+<<<<<<< HEAD
     for i, data_to_process in enumerate(data_to_process_list):
         data_file = 'bootstrap_analysis_'+data_to_process+'.h5'
         print('Processing file: ', data_file)
@@ -613,3 +668,12 @@ for mask in mask_names:
     # plot_violins(data, dataNames, save=True, save_path=save_dir+'angle_violins_'+mask_name_str+'_all_'+data_to_process+'.pdf', onlyOne=True)
     # plot_boxplots(data, dataNames, save=True, save_path=save_dir+'angle_boxes_'+mask_name_str+'_all_'+data_to_process+'.pdf', onlyOne=True)
     # print_stats(mask_name_str+ ' all mask', data, onlyOne=True)
+=======
+# angles1_IC_all, angles2_IC_all = run_statistics_on_angles_masked(dir, IC_all, slice_idx=list(range(25)))
+# data = [angles1_IC_all, angles2_IC_all]
+# dataNames = ["Angle 1", "Angle 2"]
+
+# plot_violins(data, dataNames, save=True, save_dir=save_dir+'angle_violins_IC_all.pdf')
+# plot_boxplots(data, dataNames, save=True, save_dir=save_dir+'angle_violins_IC_all.pdf')
+# print_stats('IC all mask', data)
+>>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7

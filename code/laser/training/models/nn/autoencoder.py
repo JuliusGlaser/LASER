@@ -10,6 +10,7 @@ Author:
     Julius Glaser <julius-glaser@gmx.de>
 """
 
+from re import S
 import torch
 
 import torch.nn as nn
@@ -136,7 +137,7 @@ class DAE(nn.Module):
 
 
         for d in range(depth):
-            if d == 0:
+            if d == 0 and b0_mask is not None:
                 encoder_module.append(CustomLinearEnc(encoder_features[d], encoder_features[d+1], b0_mask, device))
             else:
                 encoder_module.append(nn.Linear(encoder_features[d], encoder_features[d+1]))

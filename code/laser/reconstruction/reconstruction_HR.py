@@ -590,22 +590,15 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
 
     assert dwi_muse.shape == ishape
 
-<<<<<<< HEAD
-    mag = np.abs(dwiData)
-    phase = np.angle(dwiData)
-
-    b0_mask = bvals > 50
-=======
     b0_mask = bvals < 50
->>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
-    b0 = abs(dwiData[b0_mask, ...])
+    b0 = dwiData[b0_mask, ...]
 
-    mag_scale = np.divide(mag, b0[0,...],
+    dwi_scale = np.divide(dwiData, b0[0,...],
                         out=np.zeros_like(dwiData),
                         where=dwiData!=0)
 
-    dwi_muse_tensor = torch.tensor(mag_scale, device=device)
+    dwi_muse_tensor = torch.tensor(dwi_scale, device=device)
 
     N_diff,N_z,N_x,N_y = dwi_muse_tensor.shape
 
@@ -635,11 +628,7 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
         latent_tensor = latent_tensor.permute(3,0,1,2)
 
     unscaled_dwi = dwi_model_tensor.detach().cpu().numpy()
-<<<<<<< HEAD
-    denoised_dwi = unscaled_dwi*b0[0,...]*np.exp(1j*phase)
-=======
     denoised_dwi = unscaled_dwi * b0[0,...]
->>>>>>> 263a696785d0b8476665b9939349a2dcdafee8c7
 
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
@@ -651,7 +640,7 @@ def main():
     
     DIR = os.path.dirname(os.path.realpath(__file__))
 
-    stream = open('config_LR.yaml', 'r')
+    stream = open('config.yaml', 'r')
     config = yaml.load(stream, Loader)
 
     muse_recon      = config['muse_recon']
@@ -708,7 +697,7 @@ def main():
 
     slice_str = '000'
     print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
-    f  = h5py.File(data_dir + data_name + slice_str+ '_us'+str(args.us)+'.h5', 'r')
+    f  = h5py.File(data_dir + data_name + slice_str+'.h5', 'r')
     MB = f['MB'][()]
     N_slices = f['Slices'][()]
     N_segments = f['Segments'][()]
@@ -731,13 +720,16 @@ def main():
 
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f  = h5py.File(data_dir + data_name +slice_str+'_us'+str(args.us)+'.h5', 'r')
-        kdat = f['kdat' + str(args.part)][:]
+        # f  = h5py.File(data_dir + data_name +slice_str+'_us'+str(args.us)+'.h5', 'r')
+        # kdat = f['kdat' + str(args.part)][:]
+        f  = h5py.File(data_dir + data_name +slice_str+'.h5', 'r')
+        kdat = f['kdat'][:]
         f.close()
 
         # correct data shape
         kdat = np.squeeze(kdat)  # 4 dim
         kdat = np.swapaxes(kdat, -2, -3)
+        kdat = kdat[:,...]
         N_diff, N_coils, N_y, N_x = kdat.shape
 
         # split kdat into shots
@@ -763,7 +755,7 @@ def main():
         coil = f['coil'][:]
         f.close()
         coil2 = coil[:, slice_mb_idx, :, :]
-        coil_path = data_dir + coil_name + '.h5'
+        
         # coil_tensor = get_coil(slice_mb_idx,coil_path, device=deviceDec, MB=MB)
         coil_tensor = torch.tensor(coil2[np.newaxis, np.newaxis,...],dtype=torch.complex64, device=deviceDec )
 
@@ -869,7 +861,7 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection

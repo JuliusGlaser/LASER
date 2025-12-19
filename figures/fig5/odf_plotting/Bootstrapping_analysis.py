@@ -39,20 +39,19 @@ import yaml
 from yaml import Loader
 from time import time
 import warnings
-
-# Suppress a warning with a matching message
-warnings.filterwarnings("ignore", message=".*Solution may be inaccurate.*", category=UserWarning)
+import subprocess
 
 class Parameters:
     def __init__(self, orientation: str, 
-                 slice_ind: int, 
+                 slice_ind: tuple, 
                  matlab_area_TL: tuple, 
                  matlab_area_DR: tuple, 
                  directory: str,
                  orientationDict,
                  dictionary):
         self.orientation = orientation
-        self.slice_ind = slice_ind-1
+        self.slice_ind_low = slice_ind[0]-1
+        self.slice_ind_high = slice_ind[1]-1
         self.matlab_area_TL = matlab_area_TL
         self.matlab_area_DR = matlab_area_DR
         # translate coordinates from Matlab (origin bottom right) to the origins in the odf Slicer and for the rectangle drawing in the end
@@ -403,8 +402,6 @@ def main():
     areas_dict = config['areas_dict']
 
     odf_calc = config['odf_calc']
-    # print(dictionary)
-    GT_key = 'GT'                           #FIXME: hardcoded
     data_key = next(iter(dictionary))       #FIXME: hardcoded get the first key
     dictionary_wo_GT = copy.deepcopy(dictionary)
     dictionary_wo_GT.pop(GT_key)            # remove it
@@ -421,8 +418,6 @@ def main():
 
         # Enables/disables interactive visualization and sf_calc (primary diffusion direction)
         i=0
-
-        
         
         print(GT_key)
         data = load_data(GT_key, path_to_data, dictionary, odf_calc, orientationDict)
@@ -431,87 +426,38 @@ def main():
         print('>> data loaded')
         print('>> Process GT first')
         data = data_dict[GT_key]['data']
-        if params.orientation == 'cor': #TODO: don't flip but adjust camera view
-            data = np.flip(data, 2)
-        
-        b0_mask, mask = median_otsu(data, median_radius=5, numpass=2, vol_idx=[0,1])   #TODO: hardcoded???
+        f = h5py.File('/home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/mask.h5', 'r')
+        mask = f['mask'][:]
+        f.close()
+        try:
+            assert mask.shape == tuple(config['N_x'], config['N_y'], config['N_z'], 1)
+        except AssertionError as e:
+            try:
+                mask = mask.T
+                assert mask.shape == tuple(config['N_x'], config['N_y'], config['N_z'], 1)
+                print('mask was transposed')
+                
+            except AssertionError as e2:
+                print("Assertion failed")
+                raise
 
         # data = data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
         #             params.slicer_area_DR[0]:params.slicer_area_TL[0], 
         #             :]
         print(str(params.slicer_area_DR[1])+':'+str(params.slicer_area_TL[1])+', '+str(params.slicer_area_DR[0])+':'+str(params.slicer_area_TL[0]) + ', '+ 
-                    str(params.slice_ind)+':'+str(params.slice_ind+1))
-        
-        with warnings.catch_warnings():                                                 #Ignore annoying warning of b-values being too high
-            warnings.simplefilter("ignore", category=UserWarning)
-            auto_response_wm, auto_response_gm, auto_response_csf = auto_response_msmt(
-                gtab, b0_mask, roi_radii=20
-            )
-        print(b0_mask.shape)
-        ubvals = unique_bvals_tolerance(gtab.bvals)
-        response_mcsd = multi_shell_fiber_response(
-            sh_order_max=SH_order, 
-            bvals=ubvals,
-            wm_rf=auto_response_wm,
-            gm_rf=auto_response_gm,
-            csf_rf=auto_response_csf,
-        )
-
-        mcsd_model = MultiShellDeconvModel(gtab, response_mcsd)
-
-        ###############################################################################
-        # We can extract the peaks from the ODF, and plot these as well
-        data = data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
+                    str(params.slice_ind_low)+':'+str(params.slice_ind_high))
+        GT_data = data*mask
+        GT_data = GT_data[params.slicer_area_DR[1]:params.slicer_area_TL[1],
                     params.slicer_area_DR[0]:params.slicer_area_TL[0], 
-                    params.slice_ind:params.slice_ind+1]
-        mask = mask[params.slicer_area_DR[1]:params.slicer_area_TL[1],
-                    params.slicer_area_DR[0]:params.slicer_area_TL[0], 
-                    params.slice_ind:params.slice_ind+1]
-        
-        print('>> peak extraction')
-        with warnings.catch_warnings():                                                 #Ignore annoying warning of solver being not accurate enough
-            warnings.simplefilter("ignore", category=UserWarning)
-            GT_csd_peaks = peaks_from_model(
-            model=mcsd_model,
-            data=data,
-            sphere=sphere,
-            relative_peak_threshold=rel_peak_threshold,
-            min_separation_angle=min_separation_angle,
-            normalize_peaks=False,
-            mask=mask,
-            parallel=True,
-            num_processes=2,               #TODO: hardcoded???
-            )
+                    params.slice_ind_low:params.slice_ind_high+1, :]
+        print('GT_data shape:', GT_data.shape)
 
-        ap = shm.anisotropic_power(GT_csd_peaks.shm_coeff)
-        ap[(mask == True) & (ap == 0)] += 0.1 # to avoid 0 values in the tissue classification so that csf is calculated correctly
-        beta = 0.25
-        nclass = 3
-        hmrf = TissueClassifierHMRF()
-        initial_segmentation, final_segmentation, PVE = hmrf.classify(ap, nclass, beta)
-
-        csf_mask = np.where(final_segmentation == 1, 1, 0)
-        gm_mask = np.where(final_segmentation == 2, 1, 0)
-        wm_mask = np.where(final_segmentation == 3, 1, 0)
-
-
-        print('>> peak extraction done')
-        peaks_dirs_GT = GT_csd_peaks.peak_dirs
-        peak_values_GT = GT_csd_peaks.peak_values
-
-        # Get rid of 3rd and higher peaks for simplicity and mask 
-        peaks_dirs_GT = peaks_dirs_GT[...,0:2,:] * mask[...,None, None]
-        org_shape = peaks_dirs_GT.shape
-        
-        
-        peak_values_GT = peak_values_GT[...,0:2] * mask[...,None]
         
 
         # Start bootstrapping analysis TODO: parallelize over keys
         for data_key in dictionary_wo_GT:
             t = time()
             peaks_dirs_GT = peaks_dirs_GT.reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3], org_shape[4]))
-            peak_values_GT = peak_values_GT.reshape((org_shape[0]* org_shape[1] * org_shape[2], org_shape[3]))
             print(data_key)
             print('>> start bootstrapping')
             data1 = load_data_bootstrap(data_key, path_to_data, dictionary, odf_calc, orientationDict, n='1')
