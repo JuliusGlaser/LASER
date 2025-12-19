@@ -440,7 +440,8 @@ def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.MSELo
 
 
     with torch.no_grad():
-        filteredData,_,_ = model(inputData)
+        # filteredData,_,_ = model(inputData) VAE
+        filteredData = model(inputData)
 
     filteredData = filteredData.T
     filteredData = filteredData.reshape(N_diff, 1,1, N_z, N_x, N_y)
@@ -679,6 +680,8 @@ def main():
     parser.add_argument("--part", type=int, default=1)
     parser.add_argument('--us', type=int, default=2)
     parser.add_argument('--lat', type=int, default=7) #FIXME: remove if not needed
+    parser.add_argument('--save_name', type=str, default='DecRecon') #FIXME: remove if not needed
+    parser.add_argument('--model_path', type=str, default=modelPath)
 
   
 
@@ -688,6 +691,7 @@ def main():
 
     save_dir = save_dir + os.sep
     data_dir = data_dir + os.sep
+    modelPath = args.model_path
 
     # modelPath       = modelPath + str(args.lat) + os.sep #FIXME: remove if not needed
 
@@ -803,7 +807,8 @@ def main():
 
         for param in model.parameters():
             param.requires_grad = False
-        model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
+        if modelConfig['mask_usage']:
+            model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
 
         # Calculate yshift of MB acquisition
         yshift = []
@@ -867,9 +872,10 @@ def main():
     # LAtent Space dEcoded Reconstruction (LASER)
     #
         if LASER:
+            diffusions = slice(0,22)
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ '/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ os.sep + args.save_name + '_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -883,7 +889,11 @@ def main():
 
             
             # Reconstruct the b0 images with MUSE
-            N_b0 = sum(b0_mask==0)
+            if modelConfig['mask_usage']:
+                N_b0 = sum(b0_mask==0)
+            else:
+                b0_mask = bvals > 50
+                N_b0 = 12 #FIXME: np.sum(bvals==0)
             b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
             b0.requires_grad  = True
 
@@ -990,7 +1000,7 @@ def main():
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                     x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
+                    loss += criterion(torch.view_as_real(kdat_tensor[diffusions,:,c:c+1,:,:,:]),torch.view_as_real(x_masked[diffusions,...])) 
 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
@@ -1045,7 +1055,7 @@ def main():
                 shot_phase_tensor = torch.ones((1,1,1,1,1,1), dtype=torch.complex64, device=deviceDec)
 
             for lam in lamdas:
-                VAEregFile = h5py.File(save_dir + 'regularizer/VAE_reg_lamda_' + str(lam) + 'recon_slice_' + slice_str + '.h5', 'w')
+                VAEregFile = h5py.File(save_dir + 'regularizer' +os.sep + str(modelType) + '_' + str(modelConfig['diffusion_model'])+ args.save_name + '_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
                 print(lam)
                 x_1  = torch.zeros((N_diff,1,1,MB,N_y,N_x), dtype=torch.complex64).to(deviceDec)
                 
@@ -1054,7 +1064,7 @@ def main():
 
                 criterion   = nn.MSELoss(reduction='sum')
 
-                iterations  = 500
+                iterations  = 800
                 loss_values = []
 
 
@@ -1073,7 +1083,7 @@ def main():
                         loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
                     
                     filtered_vae, filtered = vae_reg(model, x_1)
-                    loss_of_tv = lam * filtered_vae #+ 0.1* tv_loss(x_1, MB, N_x, N_y, 126, LASER=False)
+                    loss_of_tv = lam * filtered_vae + 0.05* tv_loss(x_1, MB, N_x, N_y, 126, LASER=False)
                     # if iter > 1:
                     loss += loss_of_tv
                     loss.backward()

@@ -147,7 +147,10 @@ class DAE(nn.Module):
                 decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
                 decoder_module.append(activ_fct)
             else:
-                decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
+                if b0_mask is not None:
+                    decoder_module.append(CustomLinearDec(decoder_features[d], decoder_features[d+1], b0_mask, device, reco=reco))
+                else:
+                    decoder_module.append(nn.Linear(decoder_features[d], decoder_features[d+1]))
                 decoder_module.append(nn.Sigmoid())
 
         self.encoder_seq = nn.Sequential(*encoder_module)

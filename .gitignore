@@ -77,3 +77,4 @@ docs/_autosummary
 # storage files #
 #################
 *.h5
+*.o*

@@ -440,7 +440,8 @@ def vae_reg(model: torch.nn.Module, dwiData: torch.Tensor)->tuple[torch.nn.MSELo
 
 
     with torch.no_grad():
-        filteredData,_,_ = model(inputData)
+        # filteredData,_,_ = model(inputData) VAE
+        filteredData = model(inputData)
 
     filteredData = filteredData.T
     filteredData = filteredData.reshape(N_diff, 1,1, N_z, N_x, N_y)
@@ -668,12 +669,14 @@ def main():
     parser.add_argument("--part", type=int, default=1)
     parser.add_argument('--us', type=int, default=2)
     parser.add_argument('--lat', type=int, default=7) #FIXME: remove if not needed
+    parser.add_argument('--lam', type=float, default=reg_weight) #FIXME: remove if not needed
 
   
 
     args = parser.parse_args()
     slice_idx = args.slice_idx
     slice_inc = args.slice_inc
+    reg_weight = args.lam
 
     save_dir = save_dir + os.sep
     data_dir = data_dir + os.sep
@@ -861,7 +864,7 @@ def main():
         if LASER:
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_lam_' +str(reg_weight) +'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -982,7 +985,7 @@ def main():
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                     x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
+                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked[:,...])) 
 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
@@ -1026,7 +1029,7 @@ def main():
             t=time()
             print('>> VAE as regularizer')
             create_directory(save_dir + 'regularizer/')
-            lamdas = [0.3]
+            lamdas = [0.1, 0.3, 0.5, 1]
             print(N_diff)
             if N_segments > 1:
                 print('>> Shot phase directory: ' + save_dir + 'shot_phases/shot_phase_slice_' + slice_str + '.h5')
@@ -1037,7 +1040,7 @@ def main():
                 shot_phase_tensor = torch.ones((1,1,1,1,1,1), dtype=torch.complex64, device=deviceDec)
 
             for lam in lamdas:
-                VAEregFile = h5py.File(save_dir + 'regularizer/VAE_reg_lamda_' + str(lam) + 'recon_slice_' + slice_str + '.h5', 'w')
+                VAEregFile = h5py.File(save_dir + 'regularizer/DAE_reg_lamda_' + str(lam) + 'recon_slice_' + slice_str + '.h5', 'w')
                 print(lam)
                 x_1  = torch.zeros((N_diff,1,1,MB,N_y,N_x), dtype=torch.complex64).to(deviceDec)
                 
@@ -1046,7 +1049,7 @@ def main():
 
                 criterion   = nn.MSELoss(reduction='sum')
 
-                iterations  = 500
+                iterations  = 150
                 loss_values = []
 
 
@@ -1065,7 +1068,7 @@ def main():
                         loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
                     
                     filtered_vae, filtered = vae_reg(model, x_1)
-                    loss_of_tv = lam * filtered_vae #+ 0.1* tv_loss(x_1, MB, N_x, N_y, 126, LASER=False)
+                    loss_of_tv = lam * filtered_vae + 0.01* tv_loss(x_1, MB, N_x, N_y, 126, LASER=False)
                     # if iter > 1:
                     loss += loss_of_tv
                     loss.backward()

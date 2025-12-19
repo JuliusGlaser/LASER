@@ -86,8 +86,8 @@ N_latent = config['latent']
 N_layers = config['depth']
 activ_fct = config['activation_fct']
 
-model_BAS = ae.VAE(b0_mask=b0_mask, input_features=N_q, latent_features=N_latent, depth=N_layers, activ_fct_str=activ_fct).to(device)
-model_BAS.load_state_dict(torch.load(BAS_dir + 'train_VAE_Latent' +str(N_latent).zfill(2) + 'final.pt', map_location=torch.device(device), weights_only=True))
+model_BAS = ae.DAE(b0_mask=b0_mask, input_features=N_q, latent_features=N_latent, depth=N_layers, activ_fct_str=activ_fct).to(device)
+model_BAS.load_state_dict(torch.load(BAS_dir + 'train_DAE_Latent' +str(N_latent).zfill(2) + 'final.pt', map_location=torch.device(device), weights_only=True))
         
 model_BAS = model_BAS.float()
 
@@ -96,7 +96,7 @@ for param in model_BAS.parameters():
 
 #denoise muse data using VAE
 print(bvals.dtype)
-BAS_denoised, BAS_latent = denoising_using_ae(muse_dwi, (N_q, N_z, N_y, N_x), model_BAS, N_latent, 'VAE', device, bvals=bvals)
+BAS_denoised, BAS_latent = denoising_using_ae(muse_dwi, (N_q, N_z, N_y, N_x), model_BAS, N_latent, 'DAE', device, bvals=bvals)
 BAS_denoised = BAS_denoised.T
 BAS_latent = BAS_latent.T
 
@@ -178,24 +178,61 @@ print(muse_dwi_torch.shape)
 
 
 # #train subspace model BAS
+print('>> Run subspace denoising with error bound equal to no noise DAE_BAS training (0.00055)')
 
 BAS_full_tensor = torch.tensor(BAS_full).to(device).to(torch.float)
 print('>> BAS_full_tensor shape: ',BAS_full_tensor.shape)
-BAS_linsub_basis_tensor = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, use_error_bound=False)
-print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor.shape)
-print(BAS_linsub_basis_tensor.dtype)
+BAS_linsub_basis_tensor_00055_eb = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, error_bound = 0.00055, use_error_bound=True)
+print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor_00055_eb.shape)
+print(BAS_linsub_basis_tensor_00055_eb.dtype)
 
-BAS_dwi_linsub_tensor = BAS_linsub_basis_tensor @ BAS_linsub_basis_tensor.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
+BAS_dwi_linsub_tensor_00055_eb = BAS_linsub_basis_tensor_00055_eb @ BAS_linsub_basis_tensor_00055_eb.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
 
-BAS_dwi_linsub_tensor = BAS_dwi_linsub_tensor.view(muse_dwi_torch.shape)
+BAS_dwi_linsub_tensor_00055_eb = BAS_dwi_linsub_tensor_00055_eb.view(muse_dwi_torch.shape)
 
-BAS_dwi_linsub = BAS_dwi_linsub_tensor.detach().cpu().numpy()
-BAS_linsub_denoised = BAS_dwi_linsub * muse_dwi[0]
-BAS_linsub_denoised = BAS_linsub_denoised.T
+BAS_dwi_linsub_00055_eb = BAS_dwi_linsub_tensor_00055_eb.detach().cpu().numpy()
+BAS_linsub_denoised_00055_eb = BAS_dwi_linsub_00055_eb * muse_dwi[0]
+BAS_linsub_denoised_00055_eb = BAS_linsub_denoised_00055_eb.T
 
-print('>> BAS_linsub denoised shape: ', BAS_linsub_denoised.shape)
+print('>> BAS_linsub_denoised_00055_eb denoised shape: ', BAS_linsub_denoised_00055_eb.shape)
 
 
+print('>> Run subspace denoising with error bound of 0.00001')
+
+BAS_full_tensor = torch.tensor(BAS_full).to(device).to(torch.float)
+print('>> BAS_full_tensor shape: ',BAS_full_tensor.shape)
+BAS_linsub_basis_tensor_00001_eb = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, error_bound = 0.00001, use_error_bound=True)
+print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor_00001_eb.shape)
+print(BAS_linsub_basis_tensor_00001_eb.dtype)
+
+BAS_dwi_linsub_tensor_00001_eb = BAS_linsub_basis_tensor_00001_eb @ BAS_linsub_basis_tensor_00001_eb.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
+
+BAS_dwi_linsub_tensor_00001_eb = BAS_dwi_linsub_tensor_00001_eb.view(muse_dwi_torch.shape)
+
+BAS_dwi_linsub_00001_eb = BAS_dwi_linsub_tensor_00001_eb.detach().cpu().numpy()
+BAS_linsub_denoised_00001_eb = BAS_dwi_linsub_00001_eb * muse_dwi[0]
+BAS_linsub_denoised_00001_eb = BAS_linsub_denoised_00001_eb.T
+
+print('>> BAS_linsub denoised shape: ', BAS_linsub_denoised_00001_eb.shape)
+
+
+print('>> Run subspace denoising with fixed 11 singular values')
+
+BAS_full_tensor = torch.tensor(BAS_full).to(device).to(torch.float)
+print('>> BAS_full_tensor shape: ',BAS_full_tensor.shape)
+BAS_linsub_basis_tensor_ss_11 = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, use_error_bound=False)
+print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor_ss_11.shape)
+print(BAS_linsub_basis_tensor_ss_11.dtype)
+
+BAS_dwi_linsub_tensor_ss_11 = BAS_linsub_basis_tensor_ss_11 @ BAS_linsub_basis_tensor_ss_11.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
+
+BAS_dwi_linsub_tensor_ss_11 = BAS_dwi_linsub_tensor_ss_11.view(muse_dwi_torch.shape)
+
+BAS_dwi_linsub_ss_11 = BAS_dwi_linsub_tensor_ss_11.detach().cpu().numpy()
+BAS_linsub_denoised_ss_11 = BAS_dwi_linsub_ss_11 * muse_dwi[0]
+BAS_linsub_denoised_ss_11 = BAS_linsub_denoised_ss_11.T
+
+print('>> BAS_linsub denoised shape: ', BAS_linsub_denoised_ss_11.shape)
 
 #denoise muse data using DAE
 
@@ -210,7 +247,9 @@ print('>> latent shape: ', BAS_latent.shape)
 
 f = h5py.File('LR_new_data_denoised.h5', 'w')
 # f.create_dataset('DTI_SVD', data=DTI_linsub_denoised)
-f.create_dataset('BAS_SVD', data=BAS_linsub_denoised)
+f.create_dataset('BAS_SVD_ss_11', data=BAS_linsub_denoised_ss_11)
+f.create_dataset('BAS_SVD_00001_eb', data=BAS_linsub_denoised_00001_eb)
+f.create_dataset('BAS_SVD_00055_eb', data=BAS_linsub_denoised_00055_eb)
 f.create_dataset('DTI_VAE', data=DTI_denoised)
 f.create_dataset('DTI_VAE_lat', data=DTI_latent)
 f.create_dataset('BAS_VAE', data=BAS_denoised)
