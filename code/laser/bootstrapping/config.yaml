@@ -1,0 +1,22 @@
+path_to_data: /home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/
+path_to_latent: /home/vault/mfqb/mfqb102h/LASER_bipolar_revision/kdat_us3/
+dictionary:
+  GT: "GT_PF_PEAKS"
+  LLR1_blk3_lam0.01_us3: LLR1_blk3_lam0.01_us3_comb_PF_part_1
+
+N_x: &N_x 110
+N_y: &N_y 110
+N_z: &N_z 26
+N_q: &N_q 126
+slice_ind: [1,26]
+
+orientation_dict:
+  standard: [*N_x, *N_y, *N_z, *N_q]
+  standard_mask: [*N_x, *N_y, *N_z, 1]
+  cor: [*N_x, *N_z, *N_y, *N_q]
+  tra: [*N_x, *N_y, *N_z, *N_q]  
+    
+num_fiber: 2
+remove_bootstrap_data: True
+N_bootstrap: 1000
+bootstrap_dir_name: bootstraps_1000_slice_all_PF
