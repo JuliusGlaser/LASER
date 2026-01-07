@@ -117,19 +117,6 @@ class DAE(nn.Module):
 
         activ_fct = _get_activ_fct(activ_fct_str)
 
-        # if encoder_features is None:
-
-        #     encoder_features = torch.linspace(start=input_features, end=latent_features, steps=depth+1).type(torch.int64)
-
-        # else:
-
-        #     encoder_features = torch.tensor(encoder_features)
-
-        # #     assert(depth == len(encoder_features))
-
-
-        # decoder_features = torch.flip(encoder_features, dims=(0, ))
-
         encoder_features = torch.linspace(start=input_features,
                                           end=latent_features,
                                           steps=depth+1).type(torch.int64)

@@ -368,7 +368,7 @@ def create_data_loader(x_clean: np.array,
 
     loader_train = data.DataLoader(train_set_noised, batch_size=NetworkParameters.batch_size_train, shuffle=True)
     # test set not to be shuffeld to be able to compare results afterwards
-    loader_test = data.DataLoader(test_set_noised, batch_size=NetworkParameters.batch_size_test, shuffle=False)
+    loader_test = data.DataLoader(test_set_noised, batch_size=NetworkParameters.batch_size_test, shuffle=False, drop_last=True)
 
     return loader_train, loader_test
 
