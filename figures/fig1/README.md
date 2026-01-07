@@ -1,9 +1,9 @@
 # **⚠️ This repository is under construction! ⚠️**
 # In this folder the figure for the training process is shown
 
-## Training for LASER VAE
+## Training for LASER DAE
 <p align="center">
-  <img alt="Light" src="VAE_theory.png" width="100%">
+  <img alt="Light" src="DAE_theory.png" width="100%">
 </p>
 
 1. First parameters are fed to the model used for simulation (in this cas Ball-and-Stick with two sticks).
@@ -13,10 +13,10 @@ and the diffusivity _d_.
 
 2. To this simulated clean data then Gaussian noise is added.
 
-3. The noisy simulated data is fed to the variational auto-encoder 
+3. The noisy simulated data is fed to the denoising auto-encoder 
 
 4. Using the output of the network and the clean input signal, a measure of the denoising capability is calculated,
-here the mean squared error. To this loss the Kullbeck-Leibler divergence of the latent distributions of the network is calculated.
+here the mean squared error.
 
 5. Backpropagation and repeat starting at 3
 
