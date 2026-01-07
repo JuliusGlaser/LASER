@@ -15,6 +15,6 @@ Third, the undersampled, reconstructed dataset gets denoised with three methods:
 * Denoising with a denoising auto-encoder, trained with simulated diffusion tensor model data (non-linear approach)
 * Denoising with a denoising auto-encoder, trained with simulated ball-and-stick model data (non-linear approach)
 
-The residuals, difference between the resulting denoised images and the ground truth, are shown in the presented figure.
+The residuals, difference between the resulting denoised images and the ground truth, are shown in the presented figure. The residuals suggest that the non-linear subspace is able to better model the noisy diffusion signals and reduce the noise without loss of contrast.
 
 Fully sampeld data can be received upon request.
