@@ -11,16 +11,20 @@ The linear subspace models first "learn" a threshold for the important
 singular-values from a signal dictionary. This threshold defines  
 which singular-values are kept after SVD of the data leading to a  
 compression of the data so the subspace is only built by the  
-most important singular-values from, which the high-dimensional  
+most important singular-values from which the high-dimensional  
 signal is decompressed again.
+There are three different approaches implemented for this singular value threshold
+- threshold to keep 11 singulare values
+- threshold to achieve a relative error with the simulated signals of 0.00001
+- threshold to achieve a relative error with the simulated signals which is comparable to the DAE training results (0.0055)
 
-The VAE actually learns the compression of the data by minimizing a loss-function  
+The AE actually learns the compression of the data by minimizing a loss-function  
 during training between clean and noisy data. It is trained with a large signal  
 dictionary and and learns denoising by compression with non-linear activation  
 functions, which is benefitial, because of the highly non-linear nature  
 of the diffusion data. 
 
-To run `denoising_comp.py` adapt the config for your needs, naming the VAEs  
+To run `denoising_comp.py` adapt the config for your needs, naming the AEs  
 trained with DT and BAS model (if none it will be skipped), the path to the  
 reconstructed MUSE data, the data shape and the number of samples for the   
 linear subspace model "training" dictionary, to determine the SV-threshold.  

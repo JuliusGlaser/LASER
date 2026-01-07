@@ -27,6 +27,8 @@ from laser.training.util_classes import Losses_class as LC
 from laser.training.util_classes import Network_parameters as NP
 from torch.utils.tensorboard import SummaryWriter
 
+np.random.seed(42)
+
 def train(network_parameters: NP, 
           loader_train: data.DataLoader, 
           optim: torch.optim.Optimizer, 
@@ -86,6 +88,8 @@ def train(network_parameters: NP,
         elif network_parameters.model == 'VAE':
             recon_t, mu, logvar = model(noisy_t)
             k = (2*N_diff/network_parameters.latent)**2
+            # k = 0.01  # weighting of KLD term, can be adjusted
+
 
             recon_t_scaled = recon_t*scalingMatrix
             clean_t_scaled = clean_t*scalingMatrix
@@ -364,7 +368,7 @@ def create_data_loader(x_clean: np.array,
 
     loader_train = data.DataLoader(train_set_noised, batch_size=NetworkParameters.batch_size_train, shuffle=True)
     # test set not to be shuffeld to be able to compare results afterwards
-    loader_test = data.DataLoader(test_set_noised, batch_size=NetworkParameters.batch_size_test, shuffle=False)
+    loader_test = data.DataLoader(test_set_noised, batch_size=NetworkParameters.batch_size_test, shuffle=False, drop_last=True)
 
     return loader_train, loader_test
 

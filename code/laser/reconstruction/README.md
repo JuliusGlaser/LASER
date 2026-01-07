@@ -2,8 +2,8 @@
 The script `reconstruction.py` implements following reconstructions:
 - MUSE
 - LASER
-- VAE regularized MUSE
-- MUSE + VAE denoising
+- AE regularized MUSE
+- MUSE + AE denoising
 
 The LASER reconstruction is implemented with the following forward operator:
 <p align="center">

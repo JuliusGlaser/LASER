@@ -1,24 +1,46 @@
-path_to_data: ../../../data/
+path_to_data: /home/vault/mfqb/mfqb102h/LASER_bipolar_revision/FOD/
+path_to_latent: /home/vault/mfqb/mfqb102h/LASER_bipolar_revision/kdat_us3/
 dictionary:
-  MUSE: "MUSE"
-  LLR: "JETS2"
-  denoised: "VAE_BAS_denoised"
-  LASER_DTI: "DecRecon_combined_slices"
-  LASER_BAS: "joint\\DecRecon_combined_slices"
-N_x: &N_x 220
-N_y: &N_y 223
-N_z: &N_z 42
+  GT: "GT_PF_PEAKS"
+  LLR1_blk3_lam0.01_us3: LLR1_blk3_lam0.01_us3_comb_PF_part_1
+
+N_x: &N_x 110
+N_y: &N_y 110
+N_z: &N_z 26
 N_q: &N_q 126
 orientation_dict:
   standard: [*N_x, *N_y, *N_z, *N_q]
+  standard_mask: [*N_x, *N_y, *N_z, 1]
   cor: [*N_x, *N_z, *N_y, *N_q]
   tra: [*N_x, *N_y, *N_z, *N_q]
 areas_dict:
-  tn_crossing:
-    orientation: "cor"
-    slice_ind: 103
-    matlab_area_TL: [40, 97] # y, x
-    matlab_area_DR: [32, 105]
+  MSMT_high_res_sphere_slice_10_own_rf_each_bs:
+    orientation: "tra"
+    slice_ind: [1,26]
+    matlab_area_TL: [110, 1] # y, x
+    matlab_area_DR: [1, 110]
+    # matlab_area_TL: [105, 18] # y, x
+    # matlab_area_DR: [12, 93]
+  # MSMT_high_res_sphere_slice_11_own_rf_each_bs:
+  #   orientation: "tra"
+  #   slice_ind: 11
+  #   matlab_area_TL: [105, 18] # y, x
+  #   matlab_area_DR: [12, 93]
+  # MSMT_high_res_sphere_slice_12_own_rf_each_bs:
+  #   orientation: "tra"
+  #   slice_ind: 12
+  #   matlab_area_TL: [105, 18] # y, x
+  #   matlab_area_DR: [12, 93]
+  # MSMT_high_res_sphere_slice_13_own_rf_each_bs:
+  #   orientation: "tra"
+  #   slice_ind: 13
+  #   matlab_area_TL: [105, 18] # y, x
+  #   matlab_area_DR: [12, 93]
+  # MSMT_high_res_sphere_slice_14_own_rf_each_bs:
+  #   orientation: "tra"
+  #   slice_ind: 14
+  #   matlab_area_TL: [105, 18] # y, x
+  #   matlab_area_DR: [12, 93]
   # fine_structure:
   #   orientation: 'tra'
   #   slice_ind: 25
@@ -29,3 +51,8 @@ interactive: False
 sf_calc: False
 odf_calc: True
 plot_joint_fig: True
+
+num_fiber: 2
+remove_bootstrap_data: True
+N_bootstrap: 1000
+bootstrap_dir_name: bootstraps_1000_slice_all_PF

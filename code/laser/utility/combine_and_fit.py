@@ -8,8 +8,15 @@ from pathlib import Path
 import numpy as np
 import yaml
 from yaml import Loader
+import argparse
 
-stream = open('config.yaml', 'r')
+# Get the directory where this script is located
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Build the path to config.yaml in the same folder as the script
+config_path = os.path.join(script_dir, "config_LR.yaml")
+
+stream = open(config_path, 'r')
 config = yaml.load(stream, Loader)
 
 reco_data_path = config['reco_data_path']
@@ -32,6 +39,34 @@ run_combine_DWI = config['run_combine_DWI']
 run_combine_latent = config['run_combine_latent']
 run_fit = config['run_fit']
 
+parser = argparse.ArgumentParser(description='Read in slice files, append them, and save in correct order.')
+
+parser.add_argument('--dir', default=reco_data_path,
+                    help='directory in which the data are read.')
+
+parser.add_argument('--method', default=name,
+                    help='recon method.')
+
+parser.add_argument('--out_name', default=name_to_save,
+                    help='recon method.')
+
+parser.add_argument('--MB', type=int, default=MB,
+                    help='multi-band factor.')
+
+parser.add_argument('--slices', type=int, default=N_slices,
+                    help='total number of slices.')
+
+parser.add_argument('--part', type=int, default=1,
+                    help='Part.')
+args = parser.parse_args()
+
+N_slices = args.slices
+MB = args.MB
+reco_data_path = args.dir
+name = args.method
+name_to_save = args.out_name
+part = args.part
+
 # raw slice to get sequence parameters
 
 maxInd = int(N_slices/MB)
@@ -41,16 +76,19 @@ if run_combine_DWI:
     recons_all_slices_dwi = np.zeros((N_diff, N_slices, N_y, N_x), dtype=np.complex64)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '.h5', 'r')
+        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_'+str(part)+'.h5', 'r')
 
         dwi_data = f['DWI'][:].squeeze()
         f.close()
         slice_mb_idx = sms.map_acquire_to_ordered_slice_idx(s, N_slices, MB)
         for i in range(MB):
             n_slice = slice_mb_idx[i]
-            recons_all_slices_dwi[:,n_slice,:,:] = dwi_data[:,i,:,:]
+            if MB >1:
+                recons_all_slices_dwi[:,n_slice,:,:] = dwi_data[:,i,:,:]
+            else:
+                recons_all_slices_dwi[:,n_slice,:,:] = dwi_data[:,:,:]
     #TODO: check if file is available already
-    f = h5py.File(reco_data_path +  name + '_combined_slices.h5', 'w')
+    f = h5py.File(reco_data_path +  name_to_save + '.h5', 'w')
     f.create_dataset(name='DWI', data=recons_all_slices_dwi)
     f.close()
 
@@ -59,26 +97,26 @@ if run_combine_latent:
     slice_loop = range(0, maxInd, 1)
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '.h5', 'r')
+        f = h5py.File(reco_data_path +name + '_slice_' + slice_str + '_'+str(part)+'.h5', 'r')
         dwi_data = f['DWI_latent'][:].squeeze()
         f.close()
-        print(dwi_data.shape)
+        # print(dwi_data.shape)
         slice_mb_idx = sms.map_acquire_to_ordered_slice_idx(s, N_slices, MB)
         for i in range(MB):
             n_slice = slice_mb_idx[i]
-
-            recons_all_slices_dwi_latent[:,n_slice,:,:] = dwi_data[:,i,:,:]
+            if MB > 1:
+                recons_all_slices_dwi_latent[:,n_slice,:,:] = dwi_data[:,i,:,:]
+            else:
+                recons_all_slices_dwi_latent[:,n_slice,:,:] = dwi_data[:,:,:]
 
     #TODO: check if file is available already
-    f = h5py.File(reco_data_path +  name + '_combined_slices.h5', 'r+')
+    f = h5py.File(reco_data_path +  name_to_save + '.h5', 'r+')
     f.create_dataset(name='DWI_latent', data=recons_all_slices_dwi_latent)
     f.close()
 
 if run_fit:
-    f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
-    dwi = f['DWI'][:]
-    f.close()
-    f2 = h5py.File(r'C:\Workspace\tech_note_vae_diffusion\latrec\raw-data\data-126-dir\1.0mm_126-dir_R3x3_dvs.h5', 'r')
+    f = h5py.File(reco_data_path+  name_to_save + '.h5', 'r+')
+    f2 = h5py.File(dvs_file_path, 'r')
     bvals = f2['bvals'][:]
     bvecs = f2['bvecs'][:]
     f2.close()
@@ -128,7 +166,7 @@ if run_fit:
     RGB = (RGB.T).T
     MD  = (MD.T).T
 
-    f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
+    # f = h5py.File(r'C:\Workspace\LASER\data\LLR\JETS2.h5', 'r+')
     f.create_dataset('fa', data=FA)
     f.create_dataset('cfa', data=RGB)
     # f.create_dataset('DWI', data=dwi/1000)

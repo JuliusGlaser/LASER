@@ -83,8 +83,8 @@ class Parameters:
             areaTLNew = (y0+1, N_x - x0)
             areaDRNew = (y1-1, N_x - x1-2)
         elif self.orientation == 'cor':
-            areaTLNew = (N_z-y0-2, N_x -x0)
-            areaDRNew = (N_z-y1, N_x -x1 - 2)
+            areaTLNew = (N_z-y0-1, N_x -x0)
+            areaDRNew = (N_z-y1, N_x -x1 - 1)
         return areaTLNew, areaDRNew
     
     def ensureDirectoryExists(self):
@@ -351,7 +351,7 @@ def main():
             # function:
             if odf_calc:
                 print(data.shape)
-                response, ratio = auto_response_ssst(gtab, data, roi_radii=10, fa_thr=0.65)
+                response, ratio = auto_response_ssst(gtab, data, roi_radii=5, fa_thr=0.70)
 
             ###############################################################################
             # The ``response`` return value contains two entries. The first is an array
@@ -362,8 +362,12 @@ def main():
             # ``auto_response_ssst``. For, this purpose we can print it and have a look
             # at its values.
 
-                print(response)
-
+                print('Response output: ', response)
+                print('Array entries 1 and 2 should be identical: ', response[0][1] == response[0][2])
+                print('Array entry 0 should be around 5 times larger than 1 and 2: ', response[0][0] >= response[0][1]*5)
+                if not (response[0][0] >= response[0][1]*5):
+                     print('WARNING: only a ratio of ', response[0][0]/response[0][1], ' between axial and radial diffusivity')
+                     print('Change roi_radii or fa threshold in auto_response_ssst')
             ###############################################################################
             # We initialize an SFM model object, using these values. We will use the
             # default sphere (362  vertices, symmetrically distributed on the surface of
@@ -415,7 +419,7 @@ def main():
                 print(sf_odf.shape)
 
             # slicer output is rotated by 90 degrees counter clockwise compared to input data
-                fodf_spheres = actor.odf_slicer(sf_odf, sphere=sphere, scale=0.8, norm=False, colormap=None)
+                fodf_spheres = actor.odf_slicer(sf_odf, sphere=sphere, scale=0.6, norm=True, colormap=None)
 
             background = actor.slicer(FA_small, interpolation='nearest', value_range=(0,1))
 
@@ -575,22 +579,25 @@ def main():
                                     [[x1,y0,0], [x0,y0,0]],
                                     [[x0,y0,0], [x0,y1,0]]])
                 elif params.orientation == 'cor':
-                    background = actor.slicer(FA[100:180, params.slice_ind:params.slice_ind+1, :], interpolation='nearest')
+                    print(FA.shape)
+                    # print(params.rect_area_TL)    # (0, 56)
+                    # print(params.rect_area_DR)    # (26, 10)
+                    background = actor.slicer(FA[:, params.slice_ind:params.slice_ind+1, :], interpolation='nearest')
                     background.display_extent(0,
-                                                80 - 1,
+                                                FA.shape[0] - 1,
                                                 0,
                                                 0,
                                                 0,
                                                 FA.shape[1] - 1)
-                    x0 = params.rect_area_TL[1]-100
-                    x1 = params.rect_area_DR[1]-100
+                    x0 = params.rect_area_TL[1]
+                    x1 = params.rect_area_DR[1]
                     y0 = params.rect_area_DR[0]
                     y1 = params.rect_area_TL[0]
                     lines = np.array([[[x0,0,y1], [x1,0,y1]], 
                                     [[x1,0,y1], [x1,0,y0]],
                                     [[x1,0,y0], [x0,0,y0]],
                                     [[x0,0,y0], [x0,0,y1]]])
-                    
+                    print('Lines: ',lines)
                 # lines = np.array([[[areaTL[0],areaTL[1],0], [areaDR[0],areaTL[1], 0]], [[areaTL[0],areaTL[1],0],[areaTL[0],areaDR[1], 0]], [[areaDR[0],areaDR[1],0], [areaTL[0],areaDR[1], 0]], [[areaDR[0],areaTL[1], 0], [areaDR[0],areaDR[1],0]] ])
 
                 # Create a line actor to draw the rectangle border (passing vertices and connectivity)
@@ -599,6 +606,18 @@ def main():
                 # Add the rectangle border actor to the scene
 
                 scene.add(background)
+                no_highlight_fa_path = params.directory +'FA.png'
+                window.record(scene=scene, out_path=no_highlight_fa_path, size=(3000, 2800))
+                remove_black_borders(no_highlight_fa_path , no_highlight_fa_path)
+                img1 = plt.imread(no_highlight_fa_path)
+                fig = plt.figure(figsize=(5, 5))
+
+                # Non-quadratic image
+                ax1 = fig.add_axes([0.1, 0.1, 0.332, 0.5])  # [left, bottom, width, height]
+                ax1.imshow(img1)
+                ax1.axis('off')
+                plt.savefig(params.directory +'FA.pdf', bbox_inches='tight', dpi=1500)
+
                 scene.add(rectangle_border)
 
                 highlighted_fa_path = params.directory +'FA_plus_highlight.png'
