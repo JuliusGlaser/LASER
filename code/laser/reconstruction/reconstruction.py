@@ -594,9 +594,9 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
     mag = np.abs(dwiData)
     phase = np.angle(dwiData)
 
-    b0_mask = bvals > 50
+    b0_mask = bvals < 50
 
-    b0 = abs(dwiData[b0_mask, ...])
+    b0 = mag[b0_mask, ...]
 
     mag_scale = np.divide(mag, b0[0,...],
                         out=np.zeros_like(dwiData),
@@ -644,7 +644,7 @@ def main():
     
     DIR = os.path.dirname(os.path.realpath(__file__))
 
-    stream = open('config_LR.yaml', 'r')
+    stream = open('config.yaml', 'r')                   #TODO: adapt config file for your purpose
     config = yaml.load(stream, Loader)
 
     muse_recon      = config['muse_recon']
@@ -669,9 +669,10 @@ def main():
     parser = argparse.ArgumentParser(description="Parser to overwrite slice_idx and slice_inc")
     parser.add_argument("--slice_idx", type=int, default=slice_idx, help="Slice_idx to reconstruct")
     parser.add_argument("--slice_inc", type=int, default=slice_inc, help="slice increment if multiple slice recon")
-    parser.add_argument("--part", type=int, default=1)
-    parser.add_argument('--us', type=int, default=2)
+    parser.add_argument("--part", type=str, default='') #put here 1 or 2 for bootstrapped data
+    parser.add_argument('--file_name_suffix', type=str, default='') #for LR put here _us1 or _us2
     parser.add_argument('--lat', type=int, default=7) #FIXME: remove if not needed
+    parser.add_argument('--lam', type=float, default=reg_weight) #FIXME: remove if not needed
     parser.add_argument('--save_name', type=str, default='DecRecon') #FIXME: remove if not needed
     parser.add_argument('--model_path', type=str, default=modelPath)
 
@@ -680,12 +681,11 @@ def main():
     args = parser.parse_args()
     slice_idx = args.slice_idx
     slice_inc = args.slice_inc
+    reg_weight = args.lam
 
     save_dir = save_dir + os.sep
     data_dir = data_dir + os.sep
     modelPath = args.model_path
-
-    # modelPath       = modelPath + str(args.lat) + os.sep #FIXME: remove if not needed
 
     print('>> Following reconstructions are run (if True):')
     print('>> Muse reconstruction: ',muse_recon)
@@ -703,8 +703,8 @@ def main():
         print('>> Muse devide:', device)
 
     slice_str = '000'
-    print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
-    f  = h5py.File(data_dir + data_name + slice_str+ '_us'+str(args.us)+'.h5', 'r')
+    print('>> file path:' + data_dir + data_name + slice_str+ args.file_name_suffix + '.h5')
+    f  = h5py.File(data_dir + data_name + slice_str+ args.file_name_suffix +'.h5', 'r')
     MB = f['MB'][()]
     N_slices = f['Slices'][()]
     N_segments = f['Segments'][()]
@@ -727,8 +727,8 @@ def main():
 
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        f  = h5py.File(data_dir + data_name +slice_str+'_us'+str(args.us)+'.h5', 'r')
-        kdat = f['kdat' + str(args.part)][:]
+        f  = h5py.File(data_dir + data_name +slice_str+ args.file_name_suffix +'.h5', 'r')
+        kdat = f['kdat' + args.part][:]
         f.close()
 
         # correct data shape
@@ -759,7 +759,6 @@ def main():
         coil = f['coil'][:]
         f.close()
         coil2 = coil[:, slice_mb_idx, :, :]
-        coil_path = data_dir + coil_name + '.h5'
         # coil_tensor = get_coil(slice_mb_idx,coil_path, device=deviceDec, MB=MB)
         coil_tensor = torch.tensor(coil2[np.newaxis, np.newaxis,...],dtype=torch.complex64, device=deviceDec )
 
@@ -864,10 +863,11 @@ def main():
     # LAtent Space dEcoded Reconstruction (LASER)
     #
         if LASER:
-            diffusions = slice(0,22)
+            diffusions = slice(0,126)           # set 126 to 22 for only first shell or to 55 for first two shells only    
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ os.sep + args.save_name + '_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+            part_suffix = f"_{args.part}" if args.part else ""
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ os.sep + args.save_name + '_slice_' + slice_str + part_suffix +  '_lam_' +str(reg_weight)+'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -885,7 +885,7 @@ def main():
                 N_b0 = sum(b0_mask==0)
             else:
                 b0_mask = bvals > 50
-                N_b0 = 12 #FIXME: np.sum(bvals==0)
+                N_b0 = np.sum(bvals==0)
             b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
             b0.requires_grad  = True
 
@@ -1047,7 +1047,8 @@ def main():
                 shot_phase_tensor = torch.ones((1,1,1,1,1,1), dtype=torch.complex64, device=deviceDec)
 
             for lam in lamdas:
-                VAEregFile = h5py.File(save_dir + 'regularizer' +os.sep + str(modelType) + '_' + str(modelConfig['diffusion_model'])+ args.save_name + '_slice_' + slice_str + '_' + str(args.part)+'.h5', 'w')
+                part_suffix = f"_{args.part}" if args.part else ""
+                VAEregFile = h5py.File(save_dir + 'regularizer' +os.sep + str(modelType) + '_' + str(modelConfig['diffusion_model'])+ args.save_name + '_slice_' + slice_str + part_suffix + '.h5', 'w')
                 print(lam)
                 x_1  = torch.zeros((N_diff,1,1,MB,N_y,N_x), dtype=torch.complex64).to(deviceDec)
                 

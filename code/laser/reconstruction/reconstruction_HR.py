@@ -591,15 +591,18 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
 
     assert dwi_muse.shape == ishape
 
+    mag = np.abs(dwiData)
+    phase = np.angle(dwiData)
+
     b0_mask = bvals < 50
 
-    b0 = dwiData[b0_mask, ...]
+    b0 = mag[b0_mask, ...]
 
-    dwi_scale = np.divide(dwiData, b0[0,...],
+    mag_scale = np.divide(mag, b0[0,...],
                         out=np.zeros_like(dwiData),
                         where=dwiData!=0)
 
-    dwi_muse_tensor = torch.tensor(dwi_scale, device=device)
+    dwi_muse_tensor = torch.tensor(mag_scale, device=device)
 
     N_diff,N_z,N_x,N_y = dwi_muse_tensor.shape
 
@@ -629,7 +632,7 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
         latent_tensor = latent_tensor.permute(3,0,1,2)
 
     unscaled_dwi = dwi_model_tensor.detach().cpu().numpy()
-    denoised_dwi = unscaled_dwi * b0[0,...]
+    denoised_dwi = unscaled_dwi*b0[0,...]*np.exp(1j*phase)
 
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
@@ -641,7 +644,7 @@ def main():
     
     DIR = os.path.dirname(os.path.realpath(__file__))
 
-    stream = open('config.yaml', 'r')
+    stream = open('config.yaml', 'r')                   #TODO: adapt config file for your purpose
     config = yaml.load(stream, Loader)
 
     muse_recon      = config['muse_recon']
@@ -666,10 +669,12 @@ def main():
     parser = argparse.ArgumentParser(description="Parser to overwrite slice_idx and slice_inc")
     parser.add_argument("--slice_idx", type=int, default=slice_idx, help="Slice_idx to reconstruct")
     parser.add_argument("--slice_inc", type=int, default=slice_inc, help="slice increment if multiple slice recon")
-    parser.add_argument("--part", type=int, default=1)
-    parser.add_argument('--us', type=int, default=2)
+    parser.add_argument("--part", type=str, default='') #put here 1 or 2 for bootstrapped data
+    parser.add_argument('--file_name_suffix', type=str, default='') #for LR put here _us1 or _us2
     parser.add_argument('--lat', type=int, default=7) #FIXME: remove if not needed
     parser.add_argument('--lam', type=float, default=reg_weight) #FIXME: remove if not needed
+    parser.add_argument('--save_name', type=str, default='DecRecon') #FIXME: remove if not needed
+    parser.add_argument('--model_path', type=str, default=modelPath)
 
   
 
@@ -680,8 +685,7 @@ def main():
 
     save_dir = save_dir + os.sep
     data_dir = data_dir + os.sep
-
-    # modelPath       = modelPath + str(args.lat) + os.sep #FIXME: remove if not needed
+    modelPath = args.model_path
 
     print('>> Following reconstructions are run (if True):')
     print('>> Muse reconstruction: ',muse_recon)
@@ -699,8 +703,8 @@ def main():
         print('>> Muse devide:', device)
 
     slice_str = '000'
-    print('>> file path:' + data_dir + data_name + slice_str+ '.h5')
-    f  = h5py.File(data_dir + data_name + slice_str+'.h5', 'r')
+    print('>> file path:' + data_dir + data_name + slice_str+ args.file_name_suffix + '.h5')
+    f  = h5py.File(data_dir + data_name + slice_str+ args.file_name_suffix +'.h5', 'r')
     MB = f['MB'][()]
     N_slices = f['Slices'][()]
     N_segments = f['Segments'][()]
@@ -723,16 +727,13 @@ def main():
 
     for s in slice_loop:
         slice_str = str(s).zfill(3)
-        # f  = h5py.File(data_dir + data_name +slice_str+'_us'+str(args.us)+'.h5', 'r')
-        # kdat = f['kdat' + str(args.part)][:]
-        f  = h5py.File(data_dir + data_name +slice_str+'.h5', 'r')
-        kdat = f['kdat'][:]
+        f  = h5py.File(data_dir + data_name +slice_str+ args.file_name_suffix +'.h5', 'r')
+        kdat = f['kdat' + args.part][:]
         f.close()
 
         # correct data shape
         kdat = np.squeeze(kdat)  # 4 dim
         kdat = np.swapaxes(kdat, -2, -3)
-        kdat = kdat[:,...]
         N_diff, N_coils, N_y, N_x = kdat.shape
 
         # split kdat into shots
@@ -798,7 +799,8 @@ def main():
 
         for param in model.parameters():
             param.requires_grad = False
-        model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
+        if modelConfig['mask_usage']:
+            model.decoder_seq[-2].linear.bias[b0_mask==False] = 40
 
         # Calculate yshift of MB acquisition
         yshift = []
@@ -862,9 +864,11 @@ def main():
     # LAtent Space dEcoded Reconstruction (LASER)
     #
         if LASER:
+            diffusions = slice(0,126)           # set 126 to 22 for only first shell or to 55 for first two shells only    
             print(str(modelConfig['diffusion_model']))
             create_directory(save_dir + 'LASER/' + str(modelType) + '_' + str(modelConfig['diffusion_model']))
-            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model']) +'/DecRecon_slice_' + slice_str + '_lam_' +str(reg_weight) +'.h5', 'w')
+            part_suffix = f"_{args.part}" if args.part else ""
+            decFile = h5py.File(save_dir + 'LASER/'+ str(modelType) + '_' + str(modelConfig['diffusion_model'])+ os.sep + args.save_name + '_slice_' + slice_str + part_suffix +  '_lam_' +str(reg_weight)+'.h5', 'w')
 
             # load shot phases of multishot acquisition
             #TODO: Implement option of selection
@@ -878,7 +882,11 @@ def main():
 
             
             # Reconstruct the b0 images with MUSE
-            N_b0 = sum(b0_mask==0)
+            if modelConfig['mask_usage']:
+                N_b0 = sum(b0_mask==0)
+            else:
+                b0_mask = bvals > 50
+                N_b0 = np.sum(bvals==0)
             b0 = torch.zeros(N_b0,1,1,MB,N_y,N_x, dtype=torch.complex64).to(deviceDec)
             b0.requires_grad  = True
 
@@ -985,7 +993,7 @@ def main():
                     x_k_space = fft2c_torch(x_coil_split, dim=(-2,-1))
                     x_mb_combine = Multiband_for(x_k_space, multiband_phase=sms_phase_tensor)
                     x_masked = R(data=x_mb_combine, mask=mask[:,:,c:c+1,:,:,:])
-                    loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked[:,...])) 
+                    loss += criterion(torch.view_as_real(kdat_tensor[diffusions,:,c:c+1,:,:,:]),torch.view_as_real(x_masked[diffusions,...])) 
 
                 if reg_weight > 0:
                     loss_of_tv = reg_weight * tv_loss(x_1, MB, N_x, N_y, N_latent) #+ reg_weight/10 * tv_loss(b0, MB, N_x, N_y, 1) #+ reg_weight*10000 * tv_loss(phase, MB, N_x, N_y, N_diff) 
@@ -1029,7 +1037,7 @@ def main():
             t=time()
             print('>> VAE as regularizer')
             create_directory(save_dir + 'regularizer/')
-            lamdas = [0.1, 0.3, 0.5, 1]
+            lamdas = [0.3]
             print(N_diff)
             if N_segments > 1:
                 print('>> Shot phase directory: ' + save_dir + 'shot_phases/shot_phase_slice_' + slice_str + '.h5')
@@ -1040,7 +1048,8 @@ def main():
                 shot_phase_tensor = torch.ones((1,1,1,1,1,1), dtype=torch.complex64, device=deviceDec)
 
             for lam in lamdas:
-                VAEregFile = h5py.File(save_dir + 'regularizer/DAE_reg_lamda_' + str(lam) + 'recon_slice_' + slice_str + '.h5', 'w')
+                part_suffix = f"_{args.part}" if args.part else ""
+                VAEregFile = h5py.File(save_dir + 'regularizer' +os.sep + str(modelType) + '_' + str(modelConfig['diffusion_model'])+ args.save_name + '_slice_' + slice_str + part_suffix + '.h5', 'w')
                 print(lam)
                 x_1  = torch.zeros((N_diff,1,1,MB,N_y,N_x), dtype=torch.complex64).to(deviceDec)
                 
@@ -1049,7 +1058,7 @@ def main():
 
                 criterion   = nn.MSELoss(reduction='sum')
 
-                iterations  = 150
+                iterations  = 800
                 loss_values = []
 
 
@@ -1068,7 +1077,7 @@ def main():
                         loss += criterion(torch.view_as_real(kdat_tensor[:,:,c:c+1,:,:,:]),torch.view_as_real(x_masked)) 
                     
                     filtered_vae, filtered = vae_reg(model, x_1)
-                    loss_of_tv = lam * filtered_vae + 0.01* tv_loss(x_1, MB, N_x, N_y, 126, LASER=False)
+                    loss_of_tv = lam * filtered_vae + 0.05* tv_loss(x_1, MB, N_x, N_y, 126, LASER=False)
                     # if iter > 1:
                     loss += loss_of_tv
                     loss.backward()
