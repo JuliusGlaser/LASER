@@ -1,1 +1,1 @@
-git+https://github.com/ZhengguoTan/sigpy.git@master#sigpy
+git+https://github.com/JuliusGlaser/sigpy_glaser.git@dev#sigpy
