@@ -56,4 +56,16 @@ To run the reconstructions, you need to adapt the config files
 according to your use-case.  
 The shot reconstruction only needs to be run once and only for the LASER  
 reconstruction.  
-For the denoising using the VAE, the data has to be reconstructed with MUSE first.
+For the denoising using the DAE, the data has to be reconstructed with PI first.
+
+### Usage
+Use `--config` to select a YAML file and `--set KEY=VALUE` to override config values.
+
+```powershell
+python reconstruction.py --config config_HR.yaml
+```
+
+```powershell
+python reconstruction.py --config config_LR.yaml --part='1' --file_name_suffix='_us3'
+python reconstruction.py --config config_LR.yaml --part='2' --file_name_suffix='_us3'
+```

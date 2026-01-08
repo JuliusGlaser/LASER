@@ -24,12 +24,29 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+import importlib.util
 
 from laser.training.models.nn import autoencoder as ae
 
 import yaml
 from yaml import Loader
 from time import time
+
+def parse_overrides(items: list[str]) -> dict:
+    overrides = {}
+    for item in items:
+        if "=" not in item:
+            raise ValueError(f"Invalid override '{item}'. Use KEY=VALUE.")
+        key, value = item.split("=", 1)
+        key = key.strip()
+        if not key:
+            raise ValueError(f"Invalid override '{item}'. Use KEY=VALUE.")
+        try:
+            parsed_value = yaml.safe_load(value)
+        except yaml.YAMLError:
+            parsed_value = value
+        overrides[key] = parsed_value
+    return overrides
 
 def create_directory(path: str)->bool:
     """
@@ -575,8 +592,8 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
     b0 = mag[b0_mask, ...]
 
     mag_scale = np.divide(mag, b0[0,...],
-                        out=np.zeros_like(dwiData),
-                        where=dwiData!=0)
+                        out=np.zeros_like(mag),
+                        where=mag!=0)
 
     dwi_muse_tensor = torch.tensor(mag_scale, device=device)
 
@@ -613,6 +630,28 @@ def denoising_using_ae(dwi_muse: np.array, ishape: tuple, model: torch.nn.Module
     latent = latent_tensor.detach().cpu().numpy()
     return denoised_dwi, latent
 
+def fix_PF(dwi_data: np.array, PF_factor: float)-> np.array:
+    '''
+    fixes the partial fourier lines of the DWI data by zeroing them out in k-space
+    Args:
+        dwi_data (np.array): DWI data to fix partial fourier lines of
+        PF_factor (float): factor of partial fourier lines to fix
+    Returns:
+        np.array: DWI data with fixed partial fourier lines
+    '''
+    
+    PF_factor_0 = 1 - PF_factor
+    n_PF_lines = int(dwi_data.shape[-2] * PF_factor_0)
+    
+    print('>> Fixing ' + str(n_PF_lines) + ' partial fourier lines')
+    shape = (1,)*(dwi_data.ndim - 2) + dwi_data.shape[-2:]
+    mask = np.ones(shape, dtype=dwi_data.dtype)  # or np.ones(...)
+    mask[..., 0:n_PF_lines, :] = 0
+    kspace_data = sp.fft(dwi_data, axes=(-2, -1), norm='ortho')
+    kspace_data = kspace_data * mask
+    dwi_data = sp.ifft(kspace_data, axes=(-2, -1), norm='ortho')
+
+    return dwi_data
 
 def main():
 
@@ -620,8 +659,16 @@ def main():
     
     DIR = os.path.dirname(os.path.realpath(__file__))
 
-    stream = open('config.yaml', 'r')                   #TODO: adapt config file for your purpose
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", type=str, default="config.yaml", help="Path to reconstruction config")
+    pre_parser.add_argument("--set", dest="overrides", action="append", default=[], help="Override config values: KEY=VALUE")
+    pre_args, _ = pre_parser.parse_known_args()
+
+    stream = open(pre_args.config, 'r')                   #TODO: adapt config file for your purpose
     config = yaml.load(stream, Loader)
+    stream.close()
+    if pre_args.overrides:
+        config.update(parse_overrides(pre_args.overrides))
 
     muse_recon      = config['muse_recon']
     shot_recon      = config['shot_recon']
@@ -641,12 +688,16 @@ def main():
     slice_inc       = config['slice_increment']
     device          = config['device']
     reg_weight      = float(config['reg_weight'])
+    fix_PF_bool          = config['fix_PF']
+    PF_factor_str       = config['PF_factor']
+    num, den = map(int, PF_factor_str.split("/"))
+    PF_factor = num / den
 
-    parser = argparse.ArgumentParser(description="Parser to overwrite slice_idx and slice_inc")
+    parser = argparse.ArgumentParser(description="Parser to overwrite slice_idx and slice_inc", parents=[pre_parser])
     parser.add_argument("--slice_idx", type=int, default=slice_idx, help="Slice_idx to reconstruct")
     parser.add_argument("--slice_inc", type=int, default=slice_inc, help="slice increment if multiple slice recon")
     parser.add_argument("--part", type=str, default='') #put here 1 or 2 for bootstrapped data
-    parser.add_argument('--file_name_suffix', type=str, default='') #for LR put here _us1 or _us2
+    parser.add_argument('--file_name_suffix', type=str, default='') #for LR put here _us3
     parser.add_argument('--lam', type=float, default=reg_weight)
     parser.add_argument('--save_name', type=str, default='DecRecon')
     parser.add_argument('--model_path', type=str, default=modelPath)
@@ -671,16 +722,20 @@ def main():
     print('>> LASER device:', deviceDec)
 
     if muse_recon or shot_recon:
-        device = sp.Device(0)               # 0  for gpu, -1 for cpu
+        has_cupy = importlib.util.find_spec("cupy") is not None
+        device = sp.Device(0 if has_cupy else -1)               # 0  for gpu, -1 for cpu
         print('>> Muse device:', device)
 
-    slice_str = '000'
+    slice_str = str(slice_idx).zfill(3)
     print('>> file path:' + data_dir + data_name + slice_str+ args.file_name_suffix + '.h5')
     f  = h5py.File(data_dir + data_name + slice_str+ args.file_name_suffix +'.h5', 'r')
     MB = f['MB'][()]
     N_slices = f['Slices'][()]
     N_segments = f['Segments'][()]
-    N_Accel_PE = f['Accel_PE'][()]
+    if 'Accel_PE' in f:
+        N_Accel_PE = f['Accel_PE'][()]
+    else:
+        N_Accel_PE = 1
     f.close()
 
     # number of collapsed slices
@@ -993,7 +1048,11 @@ def main():
             lat_img = np.transpose(lat_img, (-1,0,1,2))
             decFile.create_dataset('DWI_latent', data=lat_img)
             x= Decoder_for(model, N_x, N_y, MB, N_diff, b0, phase, x_1)
-            decFile.create_dataset('DWI', data=np.array(x.detach().cpu().numpy())) 
+            dwi_data = x.detach().cpu().numpy()
+            if fix_PF_bool:
+                dwi_data = fix_PF(dwi_data, PF_factor=PF_factor)      # set PF_lines to number of partial fourier lines to fix PF artifacts
+                print('>> Fixed PF lines in DWI data')
+            decFile.create_dataset('DWI', data=np.array(dwi_data)) 
             phase = phase.detach().cpu().numpy()
             phase = np.reshape(phase, (MB, N_y, N_x, N_diff))
             decFile.create_dataset('DWI_phase', data=phase)  
