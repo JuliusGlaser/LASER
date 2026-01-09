@@ -143,7 +143,7 @@ def minmax_normalize(samples, out=None):
                         where=out!=0)
     return out
 
-def load_data_bootstrap(key: str, path_to_data: str, dictionary: dict, n: str = '1') -> np.ndarray:
+def load_data_bootstrap(key: str, path_to_data: str, dictionary: dict, expected_shape: tuple, n: str = '1') -> np.ndarray:
     """
     load diffusion data and bring to adequate shape.
     
@@ -151,6 +151,7 @@ def load_data_bootstrap(key: str, path_to_data: str, dictionary: dict, n: str = 
         key (str): The file path as copied from Windows or Linux.
         path_to_data (str): The base path to the data.
         dictionary (dict): A dictionary mapping keys to file names.
+        expected_shape (tuple): expected shapes for calculations.
         n (str): The number of the bootstrap sample.
 
     Returns:
@@ -161,6 +162,7 @@ def load_data_bootstrap(key: str, path_to_data: str, dictionary: dict, n: str = 
     
     dataFile = h5py.File(full_data_path+n+'.h5', 'r')
     data = abs(dataFile['DWI'][:].T)* 1000
+    data = ensure_shape(data, tuple(expected_shape))
     dataFile.close()
 
     return data
@@ -303,6 +305,25 @@ def norm_vec_array(vector_array: np.ndarray) -> np.ndarray:
     normalized_vectors = vector_array / norms
     return normalized_vectors
 
+def ensure_shape(arr: np.ndarray, expected_shape: tuple) -> np.ndarray:
+    """
+    Ensure that arr has expected_shape.
+    If not, try transposing it.
+    Raise ValueError if neither works.
+    """
+    if arr.shape == expected_shape:
+        return arr
+
+    transposed = arr.T
+    if transposed.shape == expected_shape:
+        return transposed
+
+    raise ValueError(
+        f"Array has shape {arr.shape}, "
+        f"transpose has shape {transposed.shape}, "
+        f"expected {expected_shape}"
+    )
+
 def main():
 
     # load config and set variables
@@ -312,9 +333,6 @@ def main():
     N_bootstrap = config['N_bootstrap']
     num_fiber = config['num_fiber']
     bootstrap_dir_name = config['bootstrap_dir_name']
-
-    print('Using N_bootstrap =', N_bootstrap)
-    bost_vectors = bost_vectors[:N_bootstrap,...]
 
     path_to_data = config['path_to_data']
     path_to_data = normalize_path(path_to_data)
@@ -332,13 +350,16 @@ def main():
     bost_vectors = bost_file['vectors'][:].squeeze()
     bost_file.close()
 
+    print('Using N_bootstrap =', N_bootstrap)
+    bost_vectors = bost_vectors[:N_bootstrap,...]
+
     # Load ground truth data
     data_key = next(iter(dictionary))
     dictionary_wo_GT = copy.deepcopy(dictionary)
     GT_key = 'GT'
     dictionary_wo_GT.pop(GT_key)            # remove it
     
-    data = load_data(GT_key, path_to_data, dictionary, orientationDict, file_format='nii')
+    data = load_data(GT_key, path_to_data, dictionary, file_format='nii')
     print('>> data loaded')
 
     GT_data = data.copy()
@@ -378,8 +399,8 @@ def main():
         print('>> start bootstrapping')
 
         # load the datasets and stack them
-        data1 = load_data_bootstrap(data_key, path_to_latent, dictionary, n='1')
-        data2 = load_data_bootstrap(data_key, path_to_latent, dictionary, n='2')
+        data1 = load_data_bootstrap(data_key, path_to_latent, dictionary, orientationDict['standard'], n='1')
+        data2 = load_data_bootstrap(data_key, path_to_latent, dictionary, orientationDict['standard'], n='2')
         data_joint = np.stack((data1, data2), axis=-1)  
         
         # Prepare arrays to store results

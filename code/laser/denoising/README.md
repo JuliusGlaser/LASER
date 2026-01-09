@@ -50,5 +50,6 @@ python ../utility/h5_to_nii.py --input_file ${FILE} --input_key DWI --output_fil
 mrcalc ${FILE}_abs.nii ${FILE}_phs.nii -force -polar ${FILE}_cplx.nii
 dwidenoise ${FILE}_cplx.nii ${FILE}_cplx_denoise.nii -force -noise noise.nii --estimator Exp1
 
+
 python ../utility/nii_to_h5.py --input_file ${FILE}_cplx_denoise
 ```
