@@ -1,5 +1,5 @@
 # **⚠️ This repository is under construction! ⚠️**
-# Here we show the results of the bootstrapping experiment
+# Bootsrap experiment
 
 For investigation of potential bias in the proposed reconstruction technique, a bootstrapping experiment was performed. For that purpose, the averaged LR dataset was used. 
 
@@ -17,3 +17,13 @@ The figure shows violin plot results for the bias and precision for direction 1 
 
 
 PI overall shows the smallest bias, but all methods perform similarly besides proposed-DT. For precision, Proposed-BAS shows the best results over all areas and LLR was slightly better than PI and PI+LPCA, while Proposed-DT performed worst.
+
+# Reproduction
+Run the scripts in the code/laser/bootsrapping directory
+Run the script 
+
+```bash
+python create_violin_plots.py
+```
+
+If not all slices were used, the masks may have to be adapted.
