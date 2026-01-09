@@ -46,7 +46,14 @@ This repository implements:
 
     This step will install all necessary dependencies for computation of all scripts on ```cpu```
 
-4. (optional) ```cuda``` support:
+4. (necessary only for bootstrapping analysis and LPCA denoising) MRtrix3 installation
+
+    Install MRtrix3 according to the installation guide given under:
+
+    https://www.mrtrix.org/download/
+
+
+5. (optional) ```cuda``` support:
     
     For CUDA support install the recommendet cuda version for your GPU and follow the steps under: https://pytorch.org/get-started/locally/
 
@@ -87,7 +94,31 @@ And auto-encoder models:
 <details>
   <summary> <span style="font-size: 25px; font-weight: bold;">Data</span></summary>
 
+Parts of the publication data can be received upon request.
+
 The data used for the experiments has the following characteristics and needs to be downloaded before running reconstructions:
+
+| Dataset | #1 | #2 |
+|--------|----|----|
+| Diffusion mode | MDDW |  |
+| Diffusion scheme | Bipolar | Monopolar |
+| Diffusion direction | 126 |  |
+| b-values (s/mm²) | 0 (12 repetitions), 1000 (20 directions), 2000 (30), 3000 (64)¹³⁴,³⁵ |  |
+| FOV (mm²) | 200 × 200 | 220 × 220 |
+| In-plane pixel size (mm²) | 1.8 × 1.8 | 1.0 × 1.0 |
+| Slice thickness (mm) | 2.50 | 2 |
+| Slices | 26 (distance factor 50%) | 42 (distance factor 20%) |
+| EPI shots | 1 | 2 |
+| Repetition time (ms) | 5200 | 5200 |
+| Echo time (ms) | 91 | 87 |
+| Echo spacing (ms) | 0.82 | 1.00 |
+| Bandwidth (Hz/Pixel) | 1,684 | 1,516 |
+| Partial Fourier | 6/8 | 1 |
+| Acceleration (in-plane SMS) | 1 × 1 | 3 × 3 |
+| Acquisition time (min) | 21:56 | 23:50 |
+| Averages | 2 | 1 |
+
+Another publicly available dataset with similar characteristics can be found here:
 
 | Spatial Resolution (mm<sup>3</sup>) | Diffusion Mode | Acceleration (in-plane x slice) | Shots | Link |
 |---|---|---|---|---|
@@ -102,8 +133,10 @@ The data used for the experiments has the following characteristics and needs to
 We assume being in the LASER directory and conda environment `laser` is activated and  
 we only use CPU for training and reconstruction on a linux system.
 1. load the data
-    First we load examplatory data, besides figure 5 we don't need to reconstruct all data,  
-    so we will only load one k-space slice, coil sensitivities and the dvs file.
+
+    Request the publicationd data or for only high resolution expirements use the examplatory data
+
+    To load the examplatory data, load one k-space slice, coil sensitivities and the dvs file.
 
     ```bash
     cd data/raw/
@@ -114,11 +147,12 @@ we only use CPU for training and reconstruction on a linux system.
 
     python load.py --file 1.0mm_126-dir_R3x3_dvs.h5
     ```
-    <!-- (ADD PACKAGE OF DATA ON REQUEST) --> 
 
 2. (optional) Run the VAE training for DT and BAS model
+
     As we provide checkpoints of the trained files, you don't need to rerun the training  
     (with the original settings it can be quite time consuming).  
+
     We assume here, you want to train the mdoel with the same parameters, so we use the   
     given configs in the directories and run the training with that.
 
@@ -133,27 +167,30 @@ we only use CPU for training and reconstruction on a linux system.
     After successfull training you should see multiple files created in the corresponding directories.
 
 3.  Run the reconstruction
-    We assume you want to run MUSE reconstruction and LASER.  
+
+    We assume you want to run MUSE reconstruction and LASER. 
+
     LASER needs the reconstructed shot_phases, so the shot_phase reconstruction  
     is run as well in the standard config.
+
     You don't need to adapt the config for this example.
 
     ```bash
     cd ../reconstruction/
 
-    python reconstruction.py
+    python reconstruction.py --config config_HR.yaml
     ```
 
     After succesfull reconstruction, the reconstructed slices should be available in  
-    LASER/data/MUSE and LASER/data/LASER_BAS
+    LASER/data/MUSE/ and LASER/data/LASER/DAE_BAS/
 
-    You can also run the reconstruction using the DT trained VAE, therefore you need to  
+    You can also run the reconstruction using the DT trained DAE, therefore you need to  
     adapt the config such that only LASER reconstruction is set to true (shot_reconstruction  
     is also not necessary anymore after first run) and the model directory now is the  
     DT model directory and just run 
     ```bash
 
-    python reconstruction.py
+    python reconstruction.py --config config_HR.yaml
 
     ```
 4.  (optional) Run the LLR reconstruction
@@ -163,17 +200,16 @@ we only use CPU for training and reconstruction on a linux system.
 
     Alternatively, the LLR reconstructed slice is available in zenodo.
 
-5.  Fit the data
-    We need to calculate do the fitting to get the fractional anisotropy (FA)  
-    and colored fractional anisotropy (cFA) for figures 4 and 5.  
-    For that, run:
-    ```bash
-    cd ../utility/
-    python combine_and_fit.py
-    ```
-    This will calculate FA and cFA for the MUSE data. For the LASER data  
-    please adapt the config options `reco_data_path` and `name` accordingly  
-    and run the `combine_and_fit.py` script again.
+5.  (optional) Run denoising and bootstrapping
+
+    For the denoising and bootstrapping you will need the original data, which contains:
+    * Low resolution SENSE reconstructed, averaged ground truth data
+    * Low resolution retrospectively 3-times undersampled k-space data
+    * Low resolution SENSE reconstructed undersampled data
+
+    For denoising follow the steps in the code/denoising directory
+
+    For bootstrapping follow the steps in code/bootstrap directory
     
 
 6.  Run the plotting scripts of figures 3, 4, and 5
@@ -197,14 +233,12 @@ we only use CPU for training and reconstruction on a linux system.
     ```
 
     6.3 Plot figure 5
-    As we have only the one transversal slice reconstructed we can only  
-    plot figure 5 b), to do so run:
 
     ```bash
 
-    cd ../fig5/odf_plotting/ 
+    cd ../fig5 
 
-    python reconst_sfm.py
+    python create_violin_plots.py
 
     ```
 

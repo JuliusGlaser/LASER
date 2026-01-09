@@ -1,4 +1,4 @@
-## Reconstruction directory
+## Reconstruction
 The script `reconstruction.py` implements following reconstructions:
 - MUSE
 - LASER
@@ -59,7 +59,7 @@ reconstruction.
 For the denoising using the DAE, the data has to be reconstructed with PI first.
 
 ### Usage
-Use `--config` to select a YAML file and `--set KEY=VALUE` to override config values.
+Use `--config` to select a YAML file and run
 
 ```powershell
 python reconstruction.py --config config_HR.yaml
