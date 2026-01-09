@@ -1,5 +1,5 @@
 # **⚠️ This repository is under construction! ⚠️**
-# A deep nonlinear subspace modeling and reconstruction for diffusion-weighted imaging using variational auto-encoder
+# A deep nonlinear subspace modeling and reconstruction for diffusion-weighted imaging using denoising auto-encoder
 
 ## Introduction
 
@@ -8,10 +8,10 @@ This repository implements:
 - creation of diffusion signal dictionaries 
     using the diffusion tensor model as well as the ball-and-stick model
 
-- training scheme for variational auto-encoder (VAE) 
+- training scheme for denoising auto-encoder (DAE) 
     using the diffusion signal dictionaries
 
-- reconstruction using the decoder of the trained VAE
+- reconstruction using the decoder of the trained DAE
 
 - plotting of all figures used in the corresponding paper
 
@@ -38,6 +38,10 @@ This repository implements:
     and then ```cd``` to the LASER/code directory,
     ```bash
     pip install -e .
+    ```
+    and
+    ```bash
+    pip install -r requirements.txt
     ```
 
     This step will install all necessary dependencies for computation of all scripts on ```cpu```
@@ -110,6 +114,7 @@ we only use CPU for training and reconstruction on a linux system.
 
     python load.py --file 1.0mm_126-dir_R3x3_dvs.h5
     ```
+    <!-- (ADD PACKAGE OF DATA ON REQUEST) --> 
 
 2. (optional) Run the VAE training for DT and BAS model
     As we provide checkpoints of the trained files, you don't need to rerun the training  

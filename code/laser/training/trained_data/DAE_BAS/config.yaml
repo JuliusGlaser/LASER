@@ -17,6 +17,6 @@
   learning_rate: 0.0001         # learning rate for the training
   batch_size_train: '512'       # batch_size for training
   batch_size_test: '1'          # batch_size for testing
-  test_epoch_step: 10           # every how man epochs shall be tested?
+  test_epoch_step: 20           # every how man epochs shall be tested?
 
   dvs_file_path: '../../../data/raw/1.0mm_126-dir_R3x3_dvs.h5' # path to dvs file containing bvalues and gradient vectors of ran sequence
