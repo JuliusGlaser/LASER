@@ -1,7 +1,6 @@
 # **⚠️ This repository is under construction! ⚠️**
-# In this folder the figure for the denoising experiment
+# Denoising experiment
 
-## Forward operator of LASER
 <p align="center">
   <img alt="Light" src="Fig3_comparison_denoising_SVD_DAE.png" width="100%">
 </p>

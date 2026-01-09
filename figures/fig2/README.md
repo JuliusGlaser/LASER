@@ -1,5 +1,5 @@
 # **⚠️ This repository is under construction! ⚠️**
-# In this folder the figure for the forward operator is shown
+# Reconstruction forward operator
 
 ## Forward operator of LASER
 <p align="center">
@@ -8,25 +8,36 @@
 The reconstruction minimization Problem is described by 
 
 $$
-||k-PΘFSΔ(|b_0^{*}|D_{Ψ^*}(\beta)exp(i\phi^*))|| - λ||\beta||_{TV}
+\lVert
+k - P \Theta F S \Delta \big(
+  |b_0^{*}| \, D_{\Psi^{*}}(\beta) \, \exp(i\phi^{*})
+\big)
+\rVert
+\;-\;
+\lambda \lVert \beta \rVert_{\mathrm{TV}}
 $$
 
 With meaning as:
 
-* $k$ is the k-space data
-* $P$ is the undersampling pattern
-* $Θ$ is the SMS operator
-* $F$ is the forward Fourier transform
-* $S$ is the multiplication with coil sensetivities
-* $Δ$ is the multiplication with the shot-to-shot phases
-* $b_0^{*}$ is the reconstructed b0 image (optimizable)
-* $D$ is the voxel-wise decoding of $\beta$
-* $\beta$ are the reconstructed latent images (otimizable)
-* $\phi^*$ are the reconstructed diffusion encoding phases
-* $λ$ is the regularization weight
-* $||x||_{TV}$ is the TV-norm of the latent iamges
+| Symbol                              | Description                             | Domain / Action                |
+| ----------------------------------- | --------------------------------------- | ------------------------------ |
+| $k$                                 | Acquired k-space data                   | Coil × shot × slice × contrast |
+| $P$                                 | Undersampling operator                  | k-space masking                |
+| $\Theta$                            | Simultaneous multi-slice (SMS) operator | Slice mixing                   |
+| $F$                                 | Forward Fourier transform               | Image → k-space                |
+| $S$                                 | Coil sensitivity multiplication         | Image-wise                     |
+| $\Delta$                            | Shot-to-shot phase modulation           | Image-wise                     |
+| $b_0^{*}$                           | Reconstructed $b_0$ image (optimizable) | Image-wise magnitude           |
+| $D_{\Psi^{*}}$                      | Voxel-wise decoder of latent variables  | Latent → contrast              |
+| $\beta$                             | Latent images (optimizable)             | Voxel-wise                     |
+| $\phi^{*}$                          | Diffusion-encoding phase maps           | Image-wise                     |
+| $\lambda$                           | Regularization weight                   | Scalar                         |
+| $\lVert \cdot \rVert_{\mathrm{TV}}$ | Total variation (TV) norm               | Spatial regularization         |
 
-Reconstruction is done by initializing $\beta$ with zeros and minimizing the difference between the sampled k-space data $k$ and $\beta$ after applying the forward operator.
-The operations of decoding and multiplication with $b_0^{*}$ and $\phi^*$ are applied in a voxel-wise fashion along contrast dimension, while the remaining operations are applied in a image-wise manner.
+
+
+The reconstruction is performed by initializing $\beta$ with zeros and minimizing the difference between the measured k-space data $k$ and the forward-model prediction obtained by applying the forward operator to $\beta$.
+
+The decoding operation and the multiplications with $b_0^{}$ and $\phi^{}$ are applied in a voxel-wise manner along the contrast dimension, whereas all remaining operations are applied in an image-wise manner.
 
 [//]: <> (Examples for the reconstruction can be found in the `examples.ipynb`)
