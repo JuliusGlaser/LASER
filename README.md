@@ -73,10 +73,7 @@ The repo implements the following reconstructions:
 
 1. Multiplexed sensitivity-encoding diffusion-weighted imaging  
    (MUSE, DOI: [https://doi.org/10.1007/s00261-022-03710-2](https://doi.org/10.1007/s00261-022-03710-2))
-2. LAtent Space dEcoded Reconstruction  
-   (LASER, the proposed method of this publication)  
-3. VAE-regularized reconstruction   
-   (compare to qModel, DOI: [https://doi.org/10.1002/mrm.28756](https://doi.org/10.1002/mrm.28756))
+2. AE based reconstruction the proposed method of this publication
 
 
 Besides that it implements dictionary simulation for:
@@ -86,7 +83,7 @@ Besides that it implements dictionary simulation for:
 1. Ball-and-stick model (DOI: [https://doi.org/10.1016/j.neuroimage.2006.09.018](https://doi.org/10.1016/j.neuroimage.2006.09.018))
 
 And auto-encoder models:
-1. Denoising auto-encoder (DAE, DOI: [10.1126/science.1127647](10.1126/science.1127647))
+1. Denoising auto-encoder (DAE, DOI: [https://www.science.org/doi/10.1126/science.1127647](https://www.science.org/doi/10.1126/science.1127647))
 
 2. Variational auto-encoder (VAE, DOI: [https://doi.org/10.48550/arXiv.1312.6114](https://doi.org/10.48550/arXiv.1312.6114))
 </details>
