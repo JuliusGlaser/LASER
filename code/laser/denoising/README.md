@@ -1,4 +1,4 @@
-## Denoising directory
+## Denoising 
 `denoising_comp.py` implements a comparison between denoising raw MUSE data using:
 * linear subspace models (based on singular-value decomposition)
 * deep-learning non-linear subspace models (based on auto-encoder)

@@ -1,8 +1,6 @@
 # **⚠️ This repository is under construction! ⚠️**
-# In this folder the figure to compare differnet reconstruction techniques can be plotted
+# Reconstruction comparison
 
-
-## Comparison of the reconstructions
 <p align="center">
   <img alt="Light" src="Fig4_comparison_HR_annotated.png" width="100%">
 </p>

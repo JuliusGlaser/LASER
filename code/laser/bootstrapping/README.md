@@ -1,4 +1,4 @@
-## Bootstrapping directory
+## Bootstrapping 
 This folder contains the scripts to run the MRtrix-based bootstrapping analysis.
 
 ### Usage

@@ -1,5 +1,5 @@
 # **⚠️ This repository is under construction! ⚠️**
-# Bootsrap experiment
+# Bootstrap experiment
 
 For investigation of potential bias in the proposed reconstruction technique, a bootstrapping experiment was performed. For that purpose, the averaged LR dataset was used. 
 
@@ -20,6 +20,7 @@ PI overall shows the smallest bias, but all methods perform similarly besides pr
 
 # Reproduction
 Run the scripts in the code/laser/bootsrapping directory
+
 Run the script 
 
 ```bash

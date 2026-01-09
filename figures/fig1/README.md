@@ -1,5 +1,5 @@
 # **⚠️ This repository is under construction! ⚠️**
-# In this folder the figure for the training process is shown
+# Training process
 
 ## Training for LASER DAE
 <p align="center">
