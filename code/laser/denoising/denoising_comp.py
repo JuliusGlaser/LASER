@@ -15,6 +15,7 @@ import yaml
 from yaml import Loader
 from copy import deepcopy as dc
 from pathlib import Path
+import importlib.util
 
 from laser.reconstruction.reconstruction import denoising_using_ae
 import laser.training.models.nn.autoencoder as ae
@@ -55,6 +56,11 @@ Dictionary_sphere_samples = config['Dictionary_sphere_samples']         # Sample
 
 NR = config['NR']                                                       # Noise distributions to be added to simulated dictionary (0 or 1 leads to no noise)
 
+if device == 'cuda':
+    #check if cuda is available
+    if not torch.cuda.is_available():
+        print('CUDA is not available, using CPU instead')
+        device = 'cpu'
 
 #load muse reconstructed data (can be combined or just one slice)
 
@@ -203,24 +209,24 @@ print('>> BAS_linsub_denoised_00055_eb denoised shape: ', BAS_linsub_denoised_00
 file_to_save.create_dataset('BAS_SVD_00055_eb', data=BAS_linsub_denoised_00055_eb)
 
 
-print('>> Run subspace denoising with error bound of 0.00001')
+# print('>> Run subspace denoising with error bound of 0.00001')
 
-BAS_full_tensor = torch.tensor(BAS_full).to(device).to(torch.float)
-print('>> BAS_full_tensor shape: ',BAS_full_tensor.shape)
-BAS_linsub_basis_tensor_00001_eb = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, error_bound = 0.00001, use_error_bound=True, device=device)
-print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor_00001_eb.shape)
-print(BAS_linsub_basis_tensor_00001_eb.dtype)
+# BAS_full_tensor = torch.tensor(BAS_full).to(device).to(torch.float)
+# print('>> BAS_full_tensor shape: ',BAS_full_tensor.shape)
+# BAS_linsub_basis_tensor_00001_eb = linsub.learn_linear_subspace(BAS_full_tensor, num_coeffs=N_latent, error_bound = 0.00001, use_error_bound=True, device=device)
+# print('>> BAS_linsub_basis_tensor shape: ',BAS_linsub_basis_tensor_00001_eb.shape)
+# print(BAS_linsub_basis_tensor_00001_eb.dtype)
 
-BAS_dwi_linsub_tensor_00001_eb = BAS_linsub_basis_tensor_00001_eb @ BAS_linsub_basis_tensor_00001_eb.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
+# BAS_dwi_linsub_tensor_00001_eb = BAS_linsub_basis_tensor_00001_eb @ BAS_linsub_basis_tensor_00001_eb.T @ abs(muse_dwi_torch).contiguous().view(N_q, -1)
 
-BAS_dwi_linsub_tensor_00001_eb = BAS_dwi_linsub_tensor_00001_eb.view(muse_dwi_torch.shape)
+# BAS_dwi_linsub_tensor_00001_eb = BAS_dwi_linsub_tensor_00001_eb.view(muse_dwi_torch.shape)
 
-BAS_dwi_linsub_00001_eb = BAS_dwi_linsub_tensor_00001_eb.detach().cpu().numpy()
-BAS_linsub_denoised_00001_eb = BAS_dwi_linsub_00001_eb * muse_dwi[0]
-BAS_linsub_denoised_00001_eb = BAS_linsub_denoised_00001_eb.T
+# BAS_dwi_linsub_00001_eb = BAS_dwi_linsub_tensor_00001_eb.detach().cpu().numpy()
+# BAS_linsub_denoised_00001_eb = BAS_dwi_linsub_00001_eb * muse_dwi[0]
+# BAS_linsub_denoised_00001_eb = BAS_linsub_denoised_00001_eb.T
 
-print('>> BAS_linsub denoised shape: ', BAS_linsub_denoised_00001_eb.shape)
-file_to_save.create_dataset('BAS_SVD_00001_eb', data=BAS_linsub_denoised_00001_eb)
+# print('>> BAS_linsub denoised shape: ', BAS_linsub_denoised_00001_eb.shape)
+# file_to_save.create_dataset('BAS_SVD_00001_eb', data=BAS_linsub_denoised_00001_eb)
 
 
 print('>> Run subspace denoising with fixed 11 singular values')
