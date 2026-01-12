@@ -219,7 +219,7 @@ def main():
 
     file_path = (
                 bs_data_path
-                / 'BS_analysis_slice_all_1000'
+                / 'bootstraps_1000_slice_all_PF'
                 )
     
     f = h5py.File((file_path / 'bootstrap_analysis_PI.h5'), 'r')
@@ -232,7 +232,7 @@ def main():
     kappa_1_PI, bias_angle_1_PI, angle_95_1_PI = compute_analysis_metrics(vec1_comb_PI, org_vec1)
     kappa_2_PI, bias_angle_2_PI, angle_95_2_PI = compute_analysis_metrics(vec2_comb_PI, org_vec2)
 
-    f = h5py.File((file_path / 'bootstrap_analysis_MPPCA.h5'), 'r')
+    f = h5py.File((file_path / 'bootstrap_analysis_PI+LPCA.h5'), 'r')
     vec1_comb_MPPCA = f['vec1_comb'][:]
     vec2_comb_MPPCA = f['vec2_comb'][:]
     f.close()
@@ -246,14 +246,14 @@ def main():
     kappa_1_LLR, bias_angle_1_LLR, angle_95_1_LLR = compute_analysis_metrics(vec1_comb_LLR, org_vec1)
     kappa_2_LLR, bias_angle_2_LLR, angle_95_2_LLR = compute_analysis_metrics(vec2_comb_LLR, org_vec2)
 
-    f = h5py.File((file_path / 'bootstrap_analysis_DTI.h5'), 'r')
+    f = h5py.File((file_path / 'bootstrap_analysis_Proposed_DT.h5'), 'r')
     vec1_comb_DTI = f['vec1_comb'][:]
     vec2_comb_DTI = f['vec2_comb'][:]
     f.close()
     kappa_1_DTI, bias_angle_1_DTI, angle_95_1_DTI = compute_analysis_metrics(vec1_comb_DTI, org_vec1)
     kappa_2_DTI, bias_angle_2_DTI, angle_95_2_DTI = compute_analysis_metrics(vec2_comb_DTI, org_vec2)
 
-    f = h5py.File((file_path / 'bootstrap_analysis_BAS.h5'), 'r')
+    f = h5py.File((file_path / 'bootstrap_analysis_Proposed_BAS.h5'), 'r')
     vec1_comb_BAS = f['vec1_comb'][:]
     vec2_comb_BAS = f['vec2_comb'][:]
     f.close()
@@ -263,24 +263,24 @@ def main():
 
     index_f = nib.load(bs_data_path / 'fixel_masks' / 'fixel_masks_all_new' / 'index.nii')
     index_data = index_f.get_fdata()
-    mask_1_plus_fiber_all = (index_data[:,:,0:25,0] > 0).astype(bool)
-    mask_2_fiber_all = (index_data[:,:,0:25,0] > 1).astype(bool)
+    mask_1_plus_fiber_all = (index_data[:,:,0:26,0] > 0).astype(bool)
+    mask_2_fiber_all = (index_data[:,:,0:26,0] > 1).astype(bool)
     mask_2_fiber_all = mask_2_fiber_all*mask_1_plus_fiber_all
 
     mask_dir = bs_data_path / 'fixel_masks' / 'regions'
 
     mask_CC_f = nib.load(mask_dir / 'CorpusCallosum.nii')
     CC_all = mask_CC_f.get_fdata().astype(float)
-    CC_all = CC_all[:,:,0:25]  # Corpus Callosum
+    CC_all = CC_all[:,:,0:26]  # Corpus Callosum
     CC_all[CC_all==0] = np.nan
 
     crossing_section_f = nib.load(mask_dir / 'CrossingSection.nii')
     CS_all = crossing_section_f.get_fdata().astype(float)                         #Crossing section front
-    CS_all = CS_all[:,:,0:25]
+    CS_all = CS_all[:,:,0:26]
     CS_all[CS_all==0] = np.nan
     internal_capsule_f = nib.load(mask_dir / 'CorticoSpinal.nii')
     IC_all = internal_capsule_f.get_fdata().astype(float)                              #IC = Internal Capsule
-    IC_all = IC_all[:,:,0:25]
+    IC_all = IC_all[:,:,0:26]
     IC_all[IC_all==0] = np.nan
 
     mask_1_plus_fiber_float_all = mask_1_plus_fiber_all.copy().astype(float)
