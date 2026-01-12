@@ -1,5 +1,5 @@
-path_to_data: ../../../data/Paper_request_data/bootstrap_data/
-path_to_latent: ../../../data/Paper_request_data/bootstrap_data/
+path_to_data: ../../../data/Paper_request_data/bootstrap_data/recos/
+path_to_latent: ../../../data/Paper_request_data/LR/recos/
 dictionary:
   GT: "GT_PF_PEAKS"
   PI: "PI_comb_PF_us3_1"
@@ -12,7 +12,7 @@ N_x: &N_x 110
 N_y: &N_y 110
 N_z: &N_z 26
 N_q: &N_q 126
-slice_ind: [0,1]
+slice_ind: [0,26]
 
 orientation_dict:
   standard: [*N_x, *N_y, *N_z, *N_q]
