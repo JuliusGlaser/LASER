@@ -1,3 +1,10 @@
+"""
+This module implements a bootstrapping analysis for diffusion MRI data using MRtrix3.
+
+Authors:
+    Julius Glaser <julius-glaser@gmx.de>
+"""
+
 import os
 import h5py
 import numpy as np

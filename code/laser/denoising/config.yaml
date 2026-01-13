@@ -10,7 +10,7 @@ device: 'cuda'                                                       # device to
 BAS_dir: '../training/trained_data/DAE_BAS/'                           # path to directory of VAE BAS model checkpoint
 DTI_dir: '../training/trained_data/DAE_DTI/'                           # path to directory of VAE DTI model checkpoint
 dvs_file_path: '../../../data/raw/1.0mm_126-dir_R3x3_dvs.h5'       # path to dvs file
-muse_data_path: '../../../data/Paper_request_data/LR/PI_comb_us3_1_PF.h5'  # path to MUSE data (data to get denoised)
+muse_data_path: '../../../data/Paper_request_data/LR/recos/PI/PI_comb_us3_PF_1.h5'  # path to MUSE data (data to get denoised)
 
 Dictionary_sphere_samples: 5                                       # Samples from unit sphere for dictionary data (meaning depends on diffusion model)
 NR: 1                                                                # Noise distributions to be added to simulated dictionary (0 or 1 leads to no noise)

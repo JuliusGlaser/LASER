@@ -690,8 +690,12 @@ def main():
     reg_weight      = float(config['reg_weight'])
     fix_PF_bool          = config['fix_PF']
     PF_factor_str       = config['PF_factor']
-    num, den = map(int, PF_factor_str.split("/"))
-    PF_factor = num / den
+
+    if isinstance(PF_factor_str, str):
+        num, den = map(int, PF_factor_str.split("/"))
+        PF_factor = num / den
+    else:
+        PF_factor = float(PF_factor_str)
 
     parser = argparse.ArgumentParser(description="Parser to overwrite slice_idx and slice_inc", parents=[pre_parser])
     parser.add_argument("--slice_idx", type=int, default=slice_idx, help="Slice_idx to reconstruct")
@@ -800,10 +804,25 @@ def main():
         
         project_root = os.path.abspath(os.path.join(DIR, "..", "..", ".."))
         diff_enc_path = os.path.join(project_root, "data", "raw", f"{diff_enc_name}.h5")
-        f = h5py.File(diff_enc_path, 'r')
-        bvals = f['bvals'][:]
-        bvecs = f['bvecs'][:]
-        f.close()
+        if os.path.exists(diff_enc_path):
+            f = h5py.File(diff_enc_path, 'r')
+            bvals = f['bvals'][:]
+            bvecs = f['bvecs'][:]
+            f.close()
+        else:
+            print('>> Diffusion encoding file not found, running data/raw/load.py to create it')
+            import subprocess
+            cmd = [
+                'python',
+                '../../../data/raw/load.py',
+                '--file',
+                '1.0mm_126-dir_R3x3_dvs.h5'
+            ]
+            subprocess.check_call(cmd)
+            f = h5py.File(diff_enc_path, 'r')
+            bvals = f['bvals'][:]
+            bvecs = f['bvecs'][:]
+            f.close()
 
         # load model config of used AE and prepare it for reconstruction
 

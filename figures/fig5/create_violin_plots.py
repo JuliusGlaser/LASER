@@ -154,6 +154,60 @@ def plot_violins(data, dataNames, dataTitles, save_fig=False, save_dir="./", spa
     plt.tight_layout()
     plt.show()
 
+def plot_violin_grid(regions, dataNames, save_fig=False, save_dir="./", spacing=0.35, ylim_max_angle1=20, ylim_max_angle2=90):
+    import os, numpy as np, matplotlib.pyplot as plt
+
+    plot_colors = ["#0050FF", "#FFD200","#FF00A2", "#00C400", "#FF6A00", "#000000", "#00FFFF", "#FFC0CB", "#808080"]
+    col_titles = ["Bias angle 1", "Precision angle 1", "Bias angle 2", "Precision angle 2"]
+
+    n = len(dataNames)
+    positions = 1.0 + np.arange(n) * spacing
+    widths = spacing * 0.9
+
+    fig, axes = plt.subplots(4, 4, figsize=(12, 10))
+    for row_idx, (region, bias_a1, bias_a2, prec_a1, prec_a2) in enumerate(regions):
+        row_data = [bias_a1, prec_a1, bias_a2, prec_a2]
+        for col_idx in range(4):
+            ax = axes[row_idx, col_idx]
+            parts = ax.violinplot(
+                row_data[col_idx],
+                positions=positions,
+                widths=widths,
+                showmeans=False,
+                showmedians=True,
+                showextrema=False
+            )
+            for l, pc in enumerate(parts['bodies']):
+                pc.set_facecolor(plot_colors[l % len(plot_colors)])
+                pc.set_edgecolor('black')
+                pc.set_alpha(1)
+
+            ax.set_xticks(positions)
+            if row_idx == len(regions) - 1:
+                ax.set_xticklabels(dataNames, rotation=0)
+            else:
+                ax.set_xticklabels([])
+
+            if col_idx < 2:
+                ax.set_ylim(0, ylim_max_angle1)
+            else:
+                ax.set_ylim(0, ylim_max_angle2)
+
+            pad = spacing * 0.7
+            ax.set_xlim(positions[0] - pad, positions[-1] + pad)
+
+            if row_idx == 0:
+                ax.set_title(col_titles[col_idx])
+            if col_idx == 0:
+                ax.set_ylabel(region)
+
+    plt.tight_layout()
+    if save_fig:
+        os.makedirs(save_dir, exist_ok=True)
+        filename = os.path.join(save_dir, "violin_combined_4x4.pdf")
+        fig.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.show()
+
 def plot_boxplots(data, dataNames, dataTitles, save_figs=False, save_dir="./", bias_or_prec="bias", region=''):
     num_cols = len(data)
     fig, axes = plt.subplots(1, num_cols, figsize=(12, 5))
@@ -219,7 +273,7 @@ def main():
 
     file_path = (
                 bs_data_path
-                / 'BS_analysis_slice_all_1000'
+                / 'bootstraps_1000_slice_all_PF'
                 )
     
     f = h5py.File((file_path / 'bootstrap_analysis_PI.h5'), 'r')
@@ -232,7 +286,7 @@ def main():
     kappa_1_PI, bias_angle_1_PI, angle_95_1_PI = compute_analysis_metrics(vec1_comb_PI, org_vec1)
     kappa_2_PI, bias_angle_2_PI, angle_95_2_PI = compute_analysis_metrics(vec2_comb_PI, org_vec2)
 
-    f = h5py.File((file_path / 'bootstrap_analysis_MPPCA.h5'), 'r')
+    f = h5py.File((file_path / 'bootstrap_analysis_PI+LPCA.h5'), 'r')
     vec1_comb_MPPCA = f['vec1_comb'][:]
     vec2_comb_MPPCA = f['vec2_comb'][:]
     f.close()
@@ -246,14 +300,14 @@ def main():
     kappa_1_LLR, bias_angle_1_LLR, angle_95_1_LLR = compute_analysis_metrics(vec1_comb_LLR, org_vec1)
     kappa_2_LLR, bias_angle_2_LLR, angle_95_2_LLR = compute_analysis_metrics(vec2_comb_LLR, org_vec2)
 
-    f = h5py.File((file_path / 'bootstrap_analysis_DTI.h5'), 'r')
+    f = h5py.File((file_path / 'bootstrap_analysis_Proposed_DT.h5'), 'r')
     vec1_comb_DTI = f['vec1_comb'][:]
     vec2_comb_DTI = f['vec2_comb'][:]
     f.close()
     kappa_1_DTI, bias_angle_1_DTI, angle_95_1_DTI = compute_analysis_metrics(vec1_comb_DTI, org_vec1)
     kappa_2_DTI, bias_angle_2_DTI, angle_95_2_DTI = compute_analysis_metrics(vec2_comb_DTI, org_vec2)
 
-    f = h5py.File((file_path / 'bootstrap_analysis_BAS.h5'), 'r')
+    f = h5py.File((file_path / 'bootstrap_analysis_Proposed_BAS.h5'), 'r')
     vec1_comb_BAS = f['vec1_comb'][:]
     vec2_comb_BAS = f['vec2_comb'][:]
     f.close()
@@ -263,24 +317,24 @@ def main():
 
     index_f = nib.load(bs_data_path / 'fixel_masks' / 'fixel_masks_all_new' / 'index.nii')
     index_data = index_f.get_fdata()
-    mask_1_plus_fiber_all = (index_data[:,:,0:25,0] > 0).astype(bool)
-    mask_2_fiber_all = (index_data[:,:,0:25,0] > 1).astype(bool)
+    mask_1_plus_fiber_all = (index_data[:,:,0:26,0] > 0).astype(bool)
+    mask_2_fiber_all = (index_data[:,:,0:26,0] > 1).astype(bool)
     mask_2_fiber_all = mask_2_fiber_all*mask_1_plus_fiber_all
 
     mask_dir = bs_data_path / 'fixel_masks' / 'regions'
 
     mask_CC_f = nib.load(mask_dir / 'CorpusCallosum.nii')
     CC_all = mask_CC_f.get_fdata().astype(float)
-    CC_all = CC_all[:,:,0:25]  # Corpus Callosum
+    CC_all = CC_all[:,:,0:26]  # Corpus Callosum
     CC_all[CC_all==0] = np.nan
 
     crossing_section_f = nib.load(mask_dir / 'CrossingSection.nii')
     CS_all = crossing_section_f.get_fdata().astype(float)                         #Crossing section front
-    CS_all = CS_all[:,:,0:25]
+    CS_all = CS_all[:,:,0:26]
     CS_all[CS_all==0] = np.nan
     internal_capsule_f = nib.load(mask_dir / 'CorticoSpinal.nii')
     IC_all = internal_capsule_f.get_fdata().astype(float)                              #IC = Internal Capsule
-    IC_all = IC_all[:,:,0:25]
+    IC_all = IC_all[:,:,0:26]
     IC_all[IC_all==0] = np.nan
 
     mask_1_plus_fiber_float_all = mask_1_plus_fiber_all.copy().astype(float)
@@ -373,6 +427,14 @@ def main():
     plot_violins(data, dataNames, dataTitles, save_dir=save_dir,save_fig=True, ylim_max=[20,90], region='CS', bias_or_prec='prec')
     # plot_boxplots(data, dataNames, dataTitles, save_figs=True)
     print_stats('CS mask', dataNames, data)
+
+    regions = [
+        ("AllWhite", angles1_all, angles2_all, angles1_all, angles2_all),
+        ("CC", angles1_CC_all, angles2_CC_all, prec1_CC_all, prec2_CC_all),
+        ("CST", angles1_IC_all, angles2_IC_all, prec1_IC_all, prec2_IC_all),
+        ("CS", angles1_CS_all, angles2_CS_all, prec1_CS_all, prec2_CS_all),
+    ]
+    plot_violin_grid(regions, dataNames, save_fig=True, save_dir=save_dir)
 
 if __name__ == "__main__":
     main()
