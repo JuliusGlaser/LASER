@@ -154,6 +154,60 @@ def plot_violins(data, dataNames, dataTitles, save_fig=False, save_dir="./", spa
     plt.tight_layout()
     plt.show()
 
+def plot_violin_grid(regions, dataNames, save_fig=False, save_dir="./", spacing=0.35, ylim_max_angle1=20, ylim_max_angle2=90):
+    import os, numpy as np, matplotlib.pyplot as plt
+
+    plot_colors = ["#0050FF", "#FFD200","#FF00A2", "#00C400", "#FF6A00", "#000000", "#00FFFF", "#FFC0CB", "#808080"]
+    col_titles = ["Bias angle 1", "Precision angle 1", "Bias angle 2", "Precision angle 2"]
+
+    n = len(dataNames)
+    positions = 1.0 + np.arange(n) * spacing
+    widths = spacing * 0.9
+
+    fig, axes = plt.subplots(4, 4, figsize=(12, 10))
+    for row_idx, (region, bias_a1, bias_a2, prec_a1, prec_a2) in enumerate(regions):
+        row_data = [bias_a1, prec_a1, bias_a2, prec_a2]
+        for col_idx in range(4):
+            ax = axes[row_idx, col_idx]
+            parts = ax.violinplot(
+                row_data[col_idx],
+                positions=positions,
+                widths=widths,
+                showmeans=False,
+                showmedians=True,
+                showextrema=False
+            )
+            for l, pc in enumerate(parts['bodies']):
+                pc.set_facecolor(plot_colors[l % len(plot_colors)])
+                pc.set_edgecolor('black')
+                pc.set_alpha(1)
+
+            ax.set_xticks(positions)
+            if row_idx == len(regions) - 1:
+                ax.set_xticklabels(dataNames, rotation=0)
+            else:
+                ax.set_xticklabels([])
+
+            if col_idx < 2:
+                ax.set_ylim(0, ylim_max_angle1)
+            else:
+                ax.set_ylim(0, ylim_max_angle2)
+
+            pad = spacing * 0.7
+            ax.set_xlim(positions[0] - pad, positions[-1] + pad)
+
+            if row_idx == 0:
+                ax.set_title(col_titles[col_idx])
+            if col_idx == 0:
+                ax.set_ylabel(region)
+
+    plt.tight_layout()
+    if save_fig:
+        os.makedirs(save_dir, exist_ok=True)
+        filename = os.path.join(save_dir, "violin_combined_4x4.pdf")
+        fig.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.show()
+
 def plot_boxplots(data, dataNames, dataTitles, save_figs=False, save_dir="./", bias_or_prec="bias", region=''):
     num_cols = len(data)
     fig, axes = plt.subplots(1, num_cols, figsize=(12, 5))
@@ -373,6 +427,14 @@ def main():
     plot_violins(data, dataNames, dataTitles, save_dir=save_dir,save_fig=True, ylim_max=[20,90], region='CS', bias_or_prec='prec')
     # plot_boxplots(data, dataNames, dataTitles, save_figs=True)
     print_stats('CS mask', dataNames, data)
+
+    regions = [
+        ("AllWhite", angles1_all, angles2_all, angles1_all, angles2_all),
+        ("CC", angles1_CC_all, angles2_CC_all, prec1_CC_all, prec2_CC_all),
+        ("CST", angles1_IC_all, angles2_IC_all, prec1_IC_all, prec2_IC_all),
+        ("CS", angles1_CS_all, angles2_CS_all, prec1_CS_all, prec2_CS_all),
+    ]
+    plot_violin_grid(regions, dataNames, save_fig=True, save_dir=save_dir)
 
 if __name__ == "__main__":
     main()

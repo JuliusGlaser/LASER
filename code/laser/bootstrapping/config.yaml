@@ -2,11 +2,11 @@ path_to_data: ../../../data/Paper_request_data/bootstrap_data/
 path_to_latent: ../../../data/Paper_request_data/LR/recos/
 dictionary:
   GT: "GT_PF_PEAKS"
-  PI: "PI_comb_us3_PF_1"
-  PI+LPCA: "MPPCA_denoised_PF_us3_1"
-  LLR: LLR1_blk3_lam0.01_us3_comb_PF_part_1
-  Proposed_DT: DTI_PF_us3_comb_1
-  Proposed_BAS: DAE_BAS_baseline_PF_comb_part1
+  PI: "PI_PF_comb_1"
+  PI+LPCA: "PI+LPCA_denoised_PF_comb_part1"
+  LLR: LLR_PF_comb_part_1
+  Proposed_DT: DAE_DTI_PF_comb_part1
+  Proposed_BAS: DAE_BAS_PF_comb_part1
 
 N_x: &N_x 110
 N_y: &N_y 110
