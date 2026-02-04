@@ -30,6 +30,12 @@ if args.output_file == '':
 
 f = h5py.File(args.input_file + '.h5', 'r')
 DWI = f[args.input_key][:].T
+if DWI.ndim > 4:
+    print('DWI has more than 4 dimensions, squeezing to 4D')
+    DWI = np.squeeze(DWI)
+if DWI.ndim != 4:
+    print('DWI has less than 4 dimensions, expanding to 4D')
+    DWI = DWI[..., np.newaxis,:]
 f.close()
 
 # DWI = np.squeeze(DWI)

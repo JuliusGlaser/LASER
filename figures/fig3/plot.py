@@ -1,114 +1,119 @@
-import h5py
 import os
+import h5py
 import numpy as np
-import torch
+import sigpy as sp
 import matplotlib.pyplot as plt
-import yaml
-from yaml import Loader
-from laser.utility.util import create_directory
+import ipywidgets as widgets
 
-#define variables of specific dataset
-N_x = 150
-N_y = 150
-N_z = 42
-N_q = 126
-diff_model = 'BAS'
-b0_threshold = 50
-device = 'cpu'
-# BAS_dict = r'../../code/laser/training/trained_data/BAS/'
-# DTI_dict = r'../../code/laser/training/trained_data/DTI/'
-
-
-qvals = [21,39,120] #direction to plot
-z = 31
-y_slice = slice(15,127)
-x_slice = slice(25,120)
-
-
-#load muse reconstructed slice 0
-
-f = h5py.File(r'../../data/ref/PI_CombShots.h5','r')
-muse_dwi = f['DWI'][:]
-muse_dwi = np.squeeze(muse_dwi)
+f= h5py.File( r'../../data/Paper_request_data/LR/GT_avg_PF.h5', 'r')
+GT = f['DWI'][:]
 f.close()
-try:
-    assert muse_dwi.shape == (N_q, N_z, N_y, N_x)
-except:
-    assert muse_dwi.T.shape == (N_q, N_z, N_y, N_x)
-    muse_dwi = muse_dwi.T
-print('>> muse dwi shape: ',muse_dwi.shape)
 
-q = qvals[0]
-print('q-value: ', q)
-plt.clf()
-create_directory('diff_' + str(q))
-ref_img = np.flipud(abs(muse_dwi[q,z,y_slice,x_slice]))
-vmin = 0
-vmax = np.max(ref_img)*1
-print('>> vmax: ', vmax)
-create_directory('diff_' + str(q) + '/subfig_A')
-print('>> plotting ref')
-plt.imshow(ref_img, cmap='gray', vmin=vmin, vmax=vmax)
-plt.axis('off')
-# plt.savefig('diff_' + str(q) + '/subfig_A/Ref.png', bbox_inches='tight', dpi=500)
-plt.savefig('diff_' + str(q) + '/subfig_A/Ref.pdf', bbox_inches='tight', dpi=500)
+f= h5py.File(r'../../data/Paper_request_data/LR/recos/PI/PI_comb_us3_PF_1.h5', 'r')
+PI = f['DWI'][:]
+f.close()    
 
-create_directory('diff_' + str(q) + '/subfig_B')
-f = h5py.File('/home/woody/mfqb/mfqb102h/meas_MID00201_FID00639_ep2d_diff_1_seg_3x1_126/reco_us_factor2_slice_015.h5', 'r')
-ref_us = f['DWI'][:]
+f= h5py.File(r'../../data/Paper_request_data/LR/recos/PI/denoised_results/Data_denoised.h5', 'r')
+print(f.keys())
+BAS_SVD = f['BAS_SVD_ss_11'][:].T
+BAS_AE = f['BAS_AE'][:].T
+DT_AE = f['DTI_AE'][:].T
 f.close()
-ref_us = np.flipud(abs(ref_us[q, 0, y_slice, x_slice]))
-plt.imshow(ref_us, cmap='gray', vmin=vmin, vmax=vmax)
-plt.axis('off')
-# plt.savefig('diff_' + str(q) + '/subfig_B/Ref_us.png', bbox_inches='tight', dpi=500)
-plt.savefig('diff_' + str(q) + '/subfig_B/Ref_us.pdf', bbox_inches='tight', dpi=500)
 
-data_dict = {'diff_' + str(q) + '/subfig_C': '../../code/laser/denoising/denoised_comparison_reco_us_f2_slice_015.h5'}
-z = 0
-keys = ['DTI_SVD', 'BAS_SVD', 'DTI_VAE', 'BAS_VAE']
 
-for fig_key in data_dict:
-    print('>> plotting ' + fig_key + ' figures')
-    file = h5py.File(data_dict[fig_key], 'r')
-    create_directory(fig_key)
-    for method in keys:
-        print('>> plotting ' + method)
-        dwi_ = file[method][:].T
-        img = np.flipud(abs(dwi_[q, z, y_slice, x_slice]))
-        plt.clf()
-        plt.imshow(img, cmap='gray', vmin=vmin, vmax=vmax)
-        plt.axis('off')
-        # plt.savefig(fig_key + os.sep + method + '.png', bbox_inches='tight', dpi=500)
-        plt.savefig(fig_key + os.sep + method + '.pdf', bbox_inches='tight', dpi=500)
-        
-    file.close()
+q_1000 = 2
+q_2000 = 40
+q_3000 = 57
+q_values = [q_1000, q_2000, q_3000]
+n_slice=14
 
-data_dict = {'diff_' + str(q) + '/subfig_differences': '../../code/laser/denoising/denoised_comparison_reco_us_f2_slice_015.h5'}
-keys = ['DTI_SVD', 'BAS_SVD', 'DTI_VAE', 'BAS_VAE']
-scaling = 2
-for fig_key in data_dict:
-    print('>> plotting ' + fig_key + ' figures')
-    file = h5py.File(data_dict[fig_key], 'r')
-    create_directory(fig_key)
-    for method in keys:
-        print('>> plotting ' + method)
-        dwi_ = file[method][:].T
-        img = np.flipud(abs(dwi_[q, z, y_slice, x_slice]))
-        plt.imshow((ref_us - img)*scaling, cmap='gray', vmin=-vmax, vmax=vmax)
-        plt.axis('off')
-        rmse = np.sqrt(np.mean((ref_img - img) ** 2))
-        # plt.title('RMSE = ' + str(rmse))
-        # plt.savefig(fig_key + os.sep + method + '.png', bbox_inches='tight', dpi=500)
-        plt.savefig(fig_key + os.sep + method + '_us.pdf', bbox_inches='tight', dpi=500)
-        
-        print('RMSE = ', rmse)
-    file.close()
+x_slice = slice(10,105)
+y_slice = slice(15,95)
 
-plt.imshow((ref_img - ref_us)*scaling, cmap='gray', vmin=-vmax, vmax=vmax)
-plt.axis('off')
-rmse = np.sqrt(np.mean((ref_img - ref_us) ** 2))
-print('>> us_ref - ref')
-print('RMSE = ', rmse)
-# plt.title('RMSE = ' + str(rmse))
-# plt.savefig('diff_' + str(q) + '/subfig_differences/Ref_us_ref.png', bbox_inches='tight', dpi=500)
-plt.savefig('diff_' + str(q) + '/subfig_differences/Ref_us_ref.pdf', bbox_inches='tight', dpi=500)
+rows = []
+for q in q_values:
+    print(q)
+    key = 'GT'
+    img = np.rot90(abs(GT[q, n_slice, x_slice, y_slice]),2)
+    vmax = np.percentile(abs(GT[q, n_slice, ...]), 99)
+    vmin = 0
+
+    os.makedirs('q_' + str(q), exist_ok=True)
+    fig, ax = plt.subplots(figsize=(10,10))
+    ax.imshow(img, cmap='gray', vmin=vmin, vmax=vmax)
+    ax.axis('off')
+    fig.savefig('q_' + str(q) + os.sep + key + '.pdf', bbox_inches='tight', dpi=500)
+    plt.close(fig)
+
+    key = 'PI'
+    img = np.rot90(abs(PI[q, n_slice, x_slice, y_slice]),2)
+    fig, ax = plt.subplots(figsize=(10,10))
+    ax.imshow(img, cmap='gray', vmin=vmin, vmax=vmax)
+    ax.axis('off')
+    fig.savefig('q_' + str(q) + os.sep + key + '.pdf', bbox_inches='tight', dpi=500)
+    plt.close(fig)
+
+    data = BAS_SVD
+    key = 'BAS_SVD'
+    img = np.rot90(abs(GT[q, n_slice, 10:105,15:95]),2) - np.rot90(abs(data[q, n_slice, 10:105,15:95]),2)
+    fig, ax = plt.subplots(figsize=(10,10))
+    ax.imshow(img, cmap='gray', vmin=-vmax, vmax=vmax)
+    ax.axis('off')
+    fig.savefig('q_' + str(q) + os.sep + key + '.pdf', bbox_inches='tight', pad_inches=0, dpi=500)
+    plt.close(fig)
+
+    rmse = np.sqrt(np.mean((abs(GT[q, n_slice, 10:105,15:95]) - abs(data[q, n_slice, 10:105,15:95])) ** 2))
+    print('>> us_ref - ref')
+    print('RMSE = ', rmse)
+
+    data = DT_AE
+    key = 'DT_AE'
+    img = np.rot90(abs(GT[q, n_slice, 10:105,15:95]),2) - np.rot90(abs(data[q, n_slice, 10:105,15:95]),2)
+    fig, ax = plt.subplots(figsize=(10,10))
+    ax.imshow(img, cmap='gray', vmin=-vmax, vmax=vmax)
+    ax.axis('off')
+    fig.savefig('q_' + str(q) + os.sep + key + '.pdf', bbox_inches='tight', pad_inches=0, dpi=500)
+    plt.close(fig)
+
+    rmse = np.sqrt(np.mean((abs(GT[q, n_slice, 10:105,15:95]) - abs(data[q, n_slice, 10:105,15:95])) ** 2))
+    print('>> us_ref - ref')
+    print('RMSE = ', rmse)
+
+    data = BAS_AE
+    key = 'BAS_AE'
+    img = np.rot90(abs(GT[q, n_slice, 10:105,15:95]),2) - np.rot90(abs(data[q, n_slice, 10:105,15:95]),2)
+    fig, ax = plt.subplots(figsize=(10,10))
+    ax.imshow(img, cmap='gray', vmin=-vmax, vmax=vmax)
+    ax.axis('off')
+    fig.savefig('q_' + str(q) + os.sep + key + '.pdf', bbox_inches='tight', pad_inches=0, dpi=500)
+    plt.close(fig)
+
+    rmse = np.sqrt(np.mean((abs(GT[q, n_slice, 10:105,15:95]) - abs(data[q, n_slice, 10:105,15:95])) ** 2))
+    print('>> us_ref - ref')
+    print('RMSE = ', rmse)
+
+    rows.append(
+        [
+            np.rot90(abs(GT[q, n_slice, x_slice, y_slice]), 2),
+            np.rot90(abs(PI[q, n_slice, x_slice, y_slice]), 2),
+            np.rot90(abs(GT[q, n_slice, x_slice, y_slice]), 2)
+            - np.rot90(abs(BAS_SVD[q, n_slice, x_slice, y_slice]), 2),
+            np.rot90(abs(GT[q, n_slice, x_slice, y_slice]), 2)
+            - np.rot90(abs(DT_AE[q, n_slice, x_slice, y_slice]), 2),
+            np.rot90(abs(GT[q, n_slice, x_slice, y_slice]), 2)
+            - np.rot90(abs(BAS_AE[q, n_slice, x_slice, y_slice]), 2),
+        ]
+    )
+
+fig, axes = plt.subplots(3, 5, figsize=(15, 9))
+for row_idx, q in enumerate(q_values):
+    vmax = np.percentile(abs(GT[q, n_slice, ...]), 99)
+    for col_idx in range(5):
+        ax = axes[row_idx, col_idx]
+        if col_idx < 2:
+            ax.imshow(rows[row_idx][col_idx], cmap='gray', vmin=0, vmax=vmax)
+        else:
+            ax.imshow(rows[row_idx][col_idx], cmap='gray', vmin=-vmax, vmax=vmax)
+        ax.axis('off')
+fig.savefig('q_all_combined_3x5.pdf', bbox_inches='tight', dpi=500)
+plt.close(fig)

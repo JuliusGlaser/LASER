@@ -1,0 +1,38 @@
+
+
+
+ Results in Testing:
+
+Loss with MSE after Epoch 0 :    0.0007063
+Loss with MSE after Epoch 20 :    0.0006774
+Loss with MSE after Epoch 40 :    0.0006594
+Loss with MSE after Epoch 60 :    0.0006494
+Loss with MSE after Epoch 80 :    0.0006357
+
+
+DAE(
+  (encoder_seq): Sequential(
+    (0): CustomLinearEnc(
+      (linear): Linear(in_features=126, out_features=97, bias=True)
+    )
+    (1): Tanh()
+    (2): Linear(in_features=97, out_features=68, bias=True)
+    (3): Tanh()
+    (4): Linear(in_features=68, out_features=39, bias=True)
+    (5): Tanh()
+    (6): Linear(in_features=39, out_features=11, bias=True)
+    (7): Tanh()
+  )
+  (decoder_seq): Sequential(
+    (0): Linear(in_features=11, out_features=39, bias=True)
+    (1): Tanh()
+    (2): Linear(in_features=39, out_features=68, bias=True)
+    (3): Tanh()
+    (4): Linear(in_features=68, out_features=97, bias=True)
+    (5): Tanh()
+    (6): CustomLinearDec(
+      (linear): Linear(in_features=97, out_features=126, bias=True)
+    )
+    (7): Sigmoid()
+  )
+)

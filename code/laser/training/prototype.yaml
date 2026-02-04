@@ -4,7 +4,7 @@
   epochs: 100                   # number of epochs to train
   loss_function: 'MSE'          # loss function to be used (implemented are MSE, L1 and Huber)
   optimizer: 'Adam'             # optimizer to be used (implemented are Adam and SGD)
-  model: 'VAE'                  # architecture to be used (implemented are DAE and VAE)
+  model: 'DAE'                  # architecture to be used (implemented are DAE and VAE)
   diffusion_model: 'BAS'        # the model equation to be used (implemented DT and BAS)
   mask_usage: True              # should the b0 mask be applied and the custom layers be used?
   device: 'cpu'                 # The device the training is done on ('cpu' or 'cuda')

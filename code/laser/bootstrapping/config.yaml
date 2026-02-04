@@ -1,0 +1,26 @@
+path_to_data: ../../../data/Paper_request_data/bootstrap_data/
+path_to_latent: ../../../data/Paper_request_data/LR/recos/
+dictionary:
+  GT: "GT_PF_PEAKS"
+  PI: "PI_PF_comb_1"
+  PI+LPCA: "PI+LPCA_denoised_PF_comb_part1"
+  LLR: LLR_PF_comb_part_1
+  Proposed_DT: DAE_DTI_PF_comb_part1
+  Proposed_BAS: DAE_BAS_PF_comb_part1
+
+N_x: &N_x 110
+N_y: &N_y 110
+N_z: &N_z 26
+N_q: &N_q 126
+slice_ind: [0,26]
+
+orientation_dict:
+  standard: [*N_x, *N_y, *N_z, *N_q]
+  standard_mask: [*N_x, *N_y, *N_z, 1]
+  cor: [*N_x, *N_z, *N_y, *N_q]
+  tra: [*N_x, *N_y, *N_z, *N_q]  
+    
+num_fiber: 2
+remove_bootstrap_data: True
+N_bootstrap: 1000
+bootstrap_dir_name: bootstraps_1000_slice_all_PF

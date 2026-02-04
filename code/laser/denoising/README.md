@@ -1,4 +1,4 @@
-## Denoising directory
+## Denoising 
 `denoising_comp.py` implements a comparison between denoising raw MUSE data using:
 * linear subspace models (based on singular-value decomposition)
 * deep-learning non-linear subspace models (based on auto-encoder)
@@ -34,4 +34,22 @@ time with the BAS diffusion model.)
 Then just run:
 ```bash
 python denoising_comp.py
+```
+
+
+
+# LPCA denoising
+
+The LPCA denoising was performed with MRtrix3 using the following commands:
+
+```bash
+FILE=/path/to/file
+
+python ../utility/h5_to_nii.py --input_file ${FILE} --input_key DWI --output_file ${FILE}
+
+mrcalc ${FILE}_abs.nii ${FILE}_phs.nii -force -polar ${FILE}_cplx.nii
+dwidenoise ${FILE}_cplx.nii ${FILE}_cplx_denoise.nii -force -noise noise.nii --estimator Exp1
+
+
+python ../utility/nii_to_h5.py --input_file ${FILE}_cplx_denoise
 ```
