@@ -1,6 +1,9 @@
 # A deep nonlinear subspace modeling and reconstruction for diffusion-weighted imaging using denoising auto-encoder
 
 <p align="center">
+  <img alt="Light" src="figures/fig1/DAE_theory.png" width="100%">
+</p>
+<p align="center">
   <img alt="Light" src="figures/fig2/fwd.png" width="100%">
 </p>
 
