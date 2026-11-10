@@ -1,4 +1,3 @@
-# **⚠️ This repository is under construction! ⚠️**
 # Training process
 
 ## Training for LASER DAE

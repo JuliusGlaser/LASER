@@ -1,4 +1,3 @@
-# **⚠️ This repository is under construction! ⚠️**
 # Bootstrap experiment
 
 For investigation of potential bias in the proposed reconstruction technique, a bootstrapping experiment was performed. For that purpose, the averaged LR dataset was used. 

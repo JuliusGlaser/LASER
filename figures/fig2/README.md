@@ -1,4 +1,3 @@
-# **⚠️ This repository is under construction! ⚠️**
 # Reconstruction forward operator
 
 ## Forward operator of LASER
