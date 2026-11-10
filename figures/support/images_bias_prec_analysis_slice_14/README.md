@@ -1,4 +1,3 @@
-# **⚠️ This repository is under construction! ⚠️**
 # Images of the bias and precision for a certain slice
 
 

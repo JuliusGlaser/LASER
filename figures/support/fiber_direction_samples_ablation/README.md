@@ -1,4 +1,3 @@
-# **⚠️ This repository is under construction! ⚠️**
 # Fiber direction samples in training ablation
 
 

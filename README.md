@@ -1,5 +1,8 @@
-# **⚠️ This repository is under construction! ⚠️**
 # A deep nonlinear subspace modeling and reconstruction for diffusion-weighted imaging using denoising auto-encoder
+
+<p align="center">
+  <img alt="Light" src="figures/fig2/fwd.png" width="100%">
+</p>
 
 ## Introduction
 
@@ -251,13 +254,13 @@ Explore the directories as you please and find further explanations.
 If you find the open-source codes/data useful, please cite:
 
 ```bibtex
-@Article{glaser_2025_laser,
-    Title     = {{A deep nonlinear subspace modeling and reconstruction for diffusion-weighted imaging using variational auto-encoder}},
+@Article{glaser_2026_laser,
+    Title     = {A Deep Nonlinear Subspace Modeling and Reconstruction for Diffusion-Weighted Imaging Using Denoising Auto-Encoder},
     Author    = {Glaser, Julius and Tan, Zhengguo and Hofmann, Annika and Laun, Frederik B and Knoll, Florian},
-    Journal   = {},
-    Year      = {},
-    Volume    = {},
-    Pages     = {},
-    doi       = {}
+    Journal   = {Magnetic Resonance in Medicine},
+    Year      = {2026},
+    Volume    = {96},
+    Pages     = {2359-2369},
+    doi       = {https://doi.org/10.1002/mrm.70496}
 }
 ```

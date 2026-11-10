@@ -6,7 +6,7 @@ This directory implements everything for the training pipeline of our reconstruc
 - training of DAE to denoise the simulated dictionary
 
 <p align="center">
-  <img alt="Light" src="../../../figures/fig1/VAE_theory.png" width="100%">
+  <img alt="Light" src="../../../figures/fig1/DAE_theory.png" width="100%">
 </p>
 
 The diffusion models are implemented in [Dipy](https://dipy.org/) and the  

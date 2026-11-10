@@ -1,4 +1,3 @@
-# **⚠️ This repository is under construction! ⚠️**
 # Denoising experiment
 
 <p align="center">
